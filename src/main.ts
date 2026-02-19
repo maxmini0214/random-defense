@@ -25,4 +25,29 @@ const config: Phaser.Types.Core.GameConfig = {
   },
 };
 
-new Phaser.Game(config);
+const game = new Phaser.Game(config);
+
+// Responsive resize handler
+function handleResize(): void {
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  game.scale.resize(
+    Math.min(w, gameConfig.game.width),
+    Math.min(h, gameConfig.game.height)
+  );
+  game.scale.refresh();
+}
+
+window.addEventListener('resize', handleResize);
+
+// Prevent default touch behaviors for smoother drag
+document.addEventListener('touchmove', (e: TouchEvent) => {
+  if (e.target && (e.target as HTMLElement).closest('#game-container')) {
+    e.preventDefault();
+  }
+}, { passive: false });
+
+// Prevent double-tap zoom on mobile
+document.addEventListener('dblclick', (e: Event) => {
+  e.preventDefault();
+}, { passive: false });

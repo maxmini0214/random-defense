@@ -9,8 +9,16 @@ interface ActionBarCallbacks {
 export class ActionBar extends Phaser.GameObjects.Container {
   private summonButton: Phaser.GameObjects.Container;
   private skipButton: Phaser.GameObjects.Container;
+  private sellZone: Phaser.GameObjects.Container;
   private summonText: Phaser.GameObjects.Text;
   private callbacks: ActionBarCallbacks;
+  private sellZoneBg!: Phaser.GameObjects.Graphics;
+  private sellZoneText!: Phaser.GameObjects.Text;
+
+  // Sell zone bounds in scene coordinates
+  public sellZoneBounds: { x: number; y: number; width: number; height: number } = {
+    x: 0, y: 0, width: 0, height: 0,
+  };
 
   constructor(
     scene: Phaser.Scene,
@@ -22,9 +30,11 @@ export class ActionBar extends Phaser.GameObjects.Container {
     super(scene, x, y);
     this.callbacks = callbacks;
 
-    const btnHeight = 44;
-    const btnPadding = 10;
-    const btnWidth = (width - btnPadding * 3) / 2;
+    const btnHeight = 44; // Minimum touch target 44px
+    const btnPadding = 8;
+
+    // 3 buttons in a row: Summon, Sell, Skip
+    const btnWidth = (width - btnPadding * 4) / 3;
 
     // Summon button
     this.summonButton = this.createButton(
@@ -39,9 +49,22 @@ export class ActionBar extends Phaser.GameObjects.Container {
     this.summonText = this.summonButton.getAt(1) as Phaser.GameObjects.Text;
     this.add(this.summonButton);
 
+    // Sell zone (center)
+    const sellX = btnPadding * 2 + btnWidth;
+    this.sellZone = this.createSellZone(sellX, 0, btnWidth, btnHeight);
+    this.add(this.sellZone);
+
+    // Store sell zone bounds in scene coordinates
+    this.sellZoneBounds = {
+      x: x + sellX,
+      y: y,
+      width: btnWidth,
+      height: btnHeight,
+    };
+
     // Skip button
     this.skipButton = this.createButton(
-      btnPadding * 2 + btnWidth,
+      btnPadding * 3 + btnWidth * 2,
       0,
       btnWidth,
       btnHeight,
@@ -53,6 +76,63 @@ export class ActionBar extends Phaser.GameObjects.Container {
 
     scene.add.existing(this);
     this.setDepth(100);
+  }
+
+  private createSellZone(
+    x: number,
+    y: number,
+    width: number,
+    height: number
+  ): Phaser.GameObjects.Container {
+    const container = this.scene.add.container(x, y);
+
+    this.sellZoneBg = this.scene.add.graphics();
+    this.sellZoneBg.fillStyle(0xef5350, 0.3);
+    this.sellZoneBg.fillRoundedRect(0, 0, width, height, 8);
+    this.sellZoneBg.lineStyle(1, 0xef5350, 0.5);
+    this.sellZoneBg.strokeRoundedRect(0, 0, width, height, 8);
+    container.add(this.sellZoneBg);
+
+    this.sellZoneText = this.scene.add.text(width / 2, height / 2, `💰 판매 ${configData.economy.sellReturn}G`, {
+      fontSize: '13px',
+      color: '#fafafa',
+      fontStyle: 'bold',
+    }).setOrigin(0.5);
+    container.add(this.sellZoneText);
+
+    return container;
+  }
+
+  /**
+   * Highlight the sell zone when a unit is being dragged.
+   */
+  public highlightSellZone(active: boolean): void {
+    const width = this.sellZoneBounds.width;
+    const height = this.sellZoneBounds.height;
+
+    this.sellZoneBg.clear();
+    if (active) {
+      this.sellZoneBg.fillStyle(0xef5350, 0.7);
+      this.sellZoneBg.fillRoundedRect(0, 0, width, height, 8);
+      this.sellZoneBg.lineStyle(2, 0xffffff, 0.8);
+      this.sellZoneBg.strokeRoundedRect(0, 0, width, height, 8);
+      this.sellZoneText.setScale(1.1);
+    } else {
+      this.sellZoneBg.fillStyle(0xef5350, 0.3);
+      this.sellZoneBg.fillRoundedRect(0, 0, width, height, 8);
+      this.sellZoneBg.lineStyle(1, 0xef5350, 0.5);
+      this.sellZoneBg.strokeRoundedRect(0, 0, width, height, 8);
+      this.sellZoneText.setScale(1);
+    }
+  }
+
+  /**
+   * Check if scene coordinates are within the sell zone.
+   */
+  public isOverSellZone(sceneX: number, sceneY: number): boolean {
+    const b = this.sellZoneBounds;
+    return sceneX >= b.x && sceneX <= b.x + b.width &&
+           sceneY >= b.y && sceneY <= b.y + b.height;
   }
 
   private createButton(
@@ -74,13 +154,12 @@ export class ActionBar extends Phaser.GameObjects.Container {
     container.add(bg);
 
     const text = this.scene.add.text(width / 2, height / 2, label, {
-      fontSize: '14px',
+      fontSize: '13px',
       color: '#fafafa',
       fontStyle: 'bold',
     }).setOrigin(0.5);
     container.add(text);
 
-    // Make interactive
     const hitArea = this.scene.add.rectangle(width / 2, height / 2, width, height)
       .setOrigin(0.5)
       .setInteractive({ useHandCursor: true })

@@ -5,12 +5,12 @@ import { Unit, UnitType, UnitGrade } from '../entities/Unit';
 export class UnitSlots extends Phaser.GameObjects.Container {
   public slots: (Unit | null)[];
   private slotGraphics: Phaser.GameObjects.Graphics[];
-  private slotSize: number;
+  public slotSize: number;
   private slotPadding: number;
-  private gridX: number;
-  private gridY: number;
+  public gridX: number;
+  public gridY: number;
   private rows: number;
-  private cols: number;
+  public cols: number;
 
   constructor(scene: Phaser.Scene, x: number, y: number, width: number) {
     super(scene, x, y);
@@ -21,9 +21,12 @@ export class UnitSlots extends Phaser.GameObjects.Container {
     this.slotGraphics = [];
 
     this.slotPadding = 6;
-    this.slotSize = Math.min(
-      (width - this.slotPadding * (this.cols + 1)) / this.cols,
-      56
+    this.slotSize = Math.max(
+      44, // Minimum touch target 44×44px
+      Math.min(
+        (width - this.slotPadding * (this.cols + 1)) / this.cols,
+        56
+      )
     );
 
     const totalGridW = this.cols * this.slotSize + (this.cols - 1) * this.slotPadding;
@@ -67,6 +70,36 @@ export class UnitSlots extends Phaser.GameObjects.Container {
   }
 
   /**
+   * Get the top-left position (in scene coordinates) of a slot.
+   */
+  public getSlotTopLeft(index: number): { x: number; y: number } {
+    const row = Math.floor(index / this.cols);
+    const col = index % this.cols;
+    return {
+      x: this.x + this.gridX + col * (this.slotSize + this.slotPadding),
+      y: this.y + this.gridY + row * (this.slotSize + this.slotPadding),
+    };
+  }
+
+  /**
+   * Given scene coordinates, return the slot index or -1 if not over any slot.
+   */
+  public getSlotAtPosition(sceneX: number, sceneY: number): number {
+    for (let i = 0; i < configData.slots.total; i++) {
+      const tl = this.getSlotTopLeft(i);
+      if (
+        sceneX >= tl.x &&
+        sceneX <= tl.x + this.slotSize &&
+        sceneY >= tl.y &&
+        sceneY <= tl.y + this.slotSize
+      ) {
+        return i;
+      }
+    }
+    return -1;
+  }
+
+  /**
    * Find the first empty slot index, or -1 if full.
    */
   public findEmptySlot(): number {
@@ -89,14 +122,13 @@ export class UnitSlots extends Phaser.GameObjects.Container {
     unit.setDepth(101);
     this.slots[slotIndex] = unit;
 
-    // Highlight the slot
     this.highlightSlot(slotIndex, grade);
 
     return unit;
   }
 
   /**
-   * Remove a unit from its slot.
+   * Remove a unit from its slot. Does NOT destroy the unit.
    */
   public removeUnit(slotIndex: number): Unit | null {
     const unit = this.slots[slotIndex];
@@ -107,7 +139,73 @@ export class UnitSlots extends Phaser.GameObjects.Container {
     return unit;
   }
 
-  private highlightSlot(index: number, grade: UnitGrade): void {
+  /**
+   * Move a unit from one slot to another (swap or move to empty).
+   */
+  public moveUnit(fromSlot: number, toSlot: number): void {
+    const unitA = this.slots[fromSlot];
+    const unitB = this.slots[toSlot];
+
+    // Swap
+    this.slots[fromSlot] = unitB;
+    this.slots[toSlot] = unitA;
+
+    if (unitA) {
+      unitA.slotIndex = toSlot;
+      const center = this.getSlotCenter(toSlot);
+      unitA.setPosition(center.x, center.y);
+      this.highlightSlot(toSlot, unitA.grade);
+    } else {
+      this.resetSlotHighlight(toSlot);
+    }
+
+    if (unitB) {
+      unitB.slotIndex = fromSlot;
+      const center = this.getSlotCenter(fromSlot);
+      unitB.setPosition(center.x, center.y);
+      this.highlightSlot(fromSlot, unitB.grade);
+    } else {
+      this.resetSlotHighlight(fromSlot);
+    }
+  }
+
+  /**
+   * Highlight a slot as a valid drop target.
+   */
+  public highlightSlotDrop(index: number, type: 'empty' | 'merge' | 'invalid'): void {
+    const row = Math.floor(index / this.cols);
+    const col = index % this.cols;
+    const sx = this.gridX + col * (this.slotSize + this.slotPadding);
+    const sy = this.gridY + row * (this.slotSize + this.slotPadding);
+
+    const g = this.slotGraphics[index];
+    g.clear();
+
+    let borderColor: number;
+    let bgAlpha: number;
+    switch (type) {
+      case 'empty':
+        borderColor = 0x66bb6a; // green
+        bgAlpha = 0.4;
+        break;
+      case 'merge':
+        borderColor = 0xffd54f; // gold
+        bgAlpha = 0.5;
+        break;
+      case 'invalid':
+      default:
+        borderColor = 0xef5350; // red
+        bgAlpha = 0.3;
+        break;
+    }
+
+    g.fillStyle(Phaser.Display.Color.HexStringToColor(configData.colors.ui.background).color, bgAlpha);
+    g.fillRoundedRect(sx, sy, this.slotSize, this.slotSize, 6);
+    g.lineStyle(2, borderColor, 0.9);
+    g.strokeRoundedRect(sx, sy, this.slotSize, this.slotSize, 6);
+  }
+
+  public highlightSlot(index: number, grade: UnitGrade): void {
     const gradeColor = Phaser.Display.Color.HexStringToColor(
       (configData.colors.grade as Record<string, string>)[grade]
     ).color;
@@ -128,7 +226,7 @@ export class UnitSlots extends Phaser.GameObjects.Container {
     g.strokeRoundedRect(sx, sy, this.slotSize, this.slotSize, 6);
   }
 
-  private resetSlotHighlight(index: number): void {
+  public resetSlotHighlight(index: number): void {
     const row = Math.floor(index / this.cols);
     const col = index % this.cols;
     const sx = this.gridX + col * (this.slotSize + this.slotPadding);
@@ -145,11 +243,36 @@ export class UnitSlots extends Phaser.GameObjects.Container {
     g.strokeRoundedRect(sx, sy, this.slotSize, this.slotSize, 6);
   }
 
+  /**
+   * Reset all slot highlights back to their default (or unit-grade color).
+   */
+  public resetAllSlotHighlights(): void {
+    for (let i = 0; i < this.slots.length; i++) {
+      const unit = this.slots[i];
+      if (unit) {
+        this.highlightSlot(i, unit.grade);
+      } else {
+        this.resetSlotHighlight(i);
+      }
+    }
+  }
+
   public isFull(): boolean {
     return this.findEmptySlot() === -1;
   }
 
   public getGridHeight(): number {
     return this.rows * (this.slotSize + this.slotPadding) - this.slotPadding;
+  }
+
+  /** Get all placed units (non-null). */
+  public getUnits(): Unit[] {
+    return this.slots.filter((u): u is Unit => u !== null);
+  }
+
+  /** Get the unit at a specific slot index. */
+  public getUnitAtSlot(index: number): Unit | null {
+    if (index < 0 || index >= this.slots.length) return null;
+    return this.slots[index];
   }
 }

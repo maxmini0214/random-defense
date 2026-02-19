@@ -30,6 +30,7 @@ export class WaveManager {
   private onWaveClear: (reward: number) => void;
   private onEnemyReachEnd: (enemy: Enemy) => void;
   private onEnemyKilled: (enemy: Enemy) => void;
+  private onWaveStart: ((waveNum: number) => void) | null;
 
   constructor(
     scene: Phaser.Scene,
@@ -38,6 +39,7 @@ export class WaveManager {
       onWaveClear: (reward: number) => void;
       onEnemyReachEnd: (enemy: Enemy) => void;
       onEnemyKilled: (enemy: Enemy) => void;
+      onWaveStart?: (waveNum: number) => void;
     }
   ) {
     this.scene = scene;
@@ -46,6 +48,7 @@ export class WaveManager {
     this.onWaveClear = callbacks.onWaveClear;
     this.onEnemyReachEnd = callbacks.onEnemyReachEnd;
     this.onEnemyKilled = callbacks.onEnemyKilled;
+    this.onWaveStart = callbacks.onWaveStart || null;
   }
 
   public startNextWave(): void {
@@ -67,6 +70,7 @@ export class WaveManager {
 
     this.isSpawning = true;
     this.isPreparing = false;
+    this.onWaveStart?.(this.currentWave);
     this.spawnNext();
   }
 

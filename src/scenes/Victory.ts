@@ -1,37 +1,202 @@
 import Phaser from 'phaser';
 import configData from '../data/config.json';
+import { UnitGrade } from '../entities/Unit';
+import { ScoreManager } from '../systems/ScoreManager';
+import { soundManager } from '../systems/SoundManager';
+
+interface VictoryData {
+  kills?: number;
+  playTime?: number;
+  highestGrade?: UnitGrade;
+  score?: number;
+}
 
 export class VictoryScene extends Phaser.Scene {
   constructor() {
     super({ key: 'Victory' });
   }
 
-  create(): void {
+  create(data: VictoryData): void {
     const { width, height } = this.cameras.main;
 
     this.cameras.main.setBackgroundColor(configData.colors.background);
 
-    this.add.text(width / 2, height / 3, '🎉 승리!', {
+    // Celebration particle burst
+    this.spawnCelebrationParticles(width, height);
+
+    // Title with bounce animation
+    const title = this.add.text(width / 2, height * 0.15, '🎉 승리! 🎉', {
       fontSize: '36px',
       color: '#ffd54f',
       fontStyle: 'bold',
-    }).setOrigin(0.5);
+      stroke: '#000000',
+      strokeThickness: 4,
+    }).setOrigin(0.5).setScale(0).setDepth(10);
 
-    this.add.text(width / 2, height / 3 + 50, '모든 웨이브를 클리어했습니다!', {
-      fontSize: '16px',
+    this.tweens.add({
+      targets: title,
+      scaleX: 1.1,
+      scaleY: 1.1,
+      duration: 500,
+      ease: 'Back.easeOut',
+      onComplete: () => {
+        this.tweens.add({
+          targets: title,
+          scaleX: 1,
+          scaleY: 1,
+          duration: 200,
+          ease: 'Sine.easeInOut',
+        });
+      },
+    });
+
+    this.add.text(width / 2, height * 0.23, '모든 웨이브를 클리어했습니다!', {
+      fontSize: '14px',
       color: '#fafafa',
-    }).setOrigin(0.5);
+    }).setOrigin(0.5).setDepth(10);
 
-    const restartBtn = this.add.text(width / 2, height / 2 + 40, '🔄 다시 시작', {
-      fontSize: '20px',
-      color: '#ffd54f',
-      fontStyle: 'bold',
-      backgroundColor: '#2d2d44',
-      padding: { x: 20, y: 10 },
-    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    // Stats panel
+    const panelY = height * 0.3;
+    const panelW = width - 60;
+    const panelH = 180;
+    const panelX = 30;
 
-    restartBtn.on('pointerup', () => {
+    const panel = this.add.graphics();
+    panel.fillStyle(0x2d2d44, 0.9);
+    panel.fillRoundedRect(panelX, panelY, panelW, panelH, 12);
+    panel.lineStyle(2, 0xffd54f, 0.5);
+    panel.strokeRoundedRect(panelX, panelY, panelW, panelH, 12);
+    panel.setDepth(10);
+
+    const statsX = panelX + 20;
+    let statsY = panelY + 20;
+    const lineHeight = 30;
+
+    if (data.kills !== undefined) {
+      this.add.text(statsX, statsY, `⚔️ 총 처치 수: ${data.kills}`, {
+        fontSize: '16px', color: '#66bb6a', fontStyle: 'bold',
+      }).setDepth(10);
+      statsY += lineHeight;
+    }
+
+    if (data.score !== undefined) {
+      this.add.text(statsX, statsY, `🏅 최종 점수: ${data.score}`, {
+        fontSize: '16px', color: '#ffd54f', fontStyle: 'bold',
+      }).setDepth(10);
+      statsY += lineHeight;
+    }
+
+    if (data.highestGrade) {
+      const gradeNames: Record<string, string> = {
+        common: '커먼 ⭐', rare: '레어 ⭐⭐', epic: '에픽 ⭐⭐⭐',
+        legend: '레전드 ⭐⭐⭐⭐', mythic: '미시크 ⭐⭐⭐⭐⭐',
+      };
+      const gradeColor = (configData.colors.grade as Record<string, string>)[data.highestGrade];
+      this.add.text(statsX, statsY, `👑 최고 등급: ${gradeNames[data.highestGrade]}`, {
+        fontSize: '16px', color: gradeColor, fontStyle: 'bold',
+      }).setDepth(10);
+      statsY += lineHeight;
+    }
+
+    if (data.playTime !== undefined) {
+      const mins = Math.floor(data.playTime / 60);
+      const secs = data.playTime % 60;
+      this.add.text(statsX, statsY, `⏱️ 플레이 시간: ${mins}분 ${secs}초`, {
+        fontSize: '16px', color: '#fafafa',
+      }).setDepth(10);
+      statsY += lineHeight;
+    }
+
+    this.add.text(statsX, statsY, `🌊 25/25 웨이브 완료`, {
+      fontSize: '16px', color: '#42a5f5', fontStyle: 'bold',
+    }).setDepth(10);
+
+    // Best record
+    const record = ScoreManager.getBestRecord();
+    if (record.bestScore > 0) {
+      this.add.text(width / 2, panelY + panelH + 12, `🏆 최고 기록: ${record.bestScore}점`, {
+        fontSize: '13px', color: '#ffd54f',
+      }).setOrigin(0.5).setDepth(10);
+    }
+
+    // Restart button
+    const btnY = panelY + panelH + 40;
+    const btnW = 180;
+    const btnH = 48;
+    const btnX = width / 2 - btnW / 2;
+
+    const btnBg = this.add.graphics();
+    btnBg.fillStyle(0xffd54f, 0.85);
+    btnBg.fillRoundedRect(btnX, btnY, btnW, btnH, 10);
+    btnBg.lineStyle(2, 0xffffff, 0.3);
+    btnBg.strokeRoundedRect(btnX, btnY, btnW, btnH, 10);
+    btnBg.setDepth(10);
+
+    this.add.text(width / 2, btnY + btnH / 2, '🔄 다시 시작', {
+      fontSize: '18px', color: '#1a1a2e', fontStyle: 'bold',
+    }).setOrigin(0.5).setDepth(10);
+
+    const hitArea = this.add.rectangle(width / 2, btnY + btnH / 2, btnW, btnH)
+      .setOrigin(0.5)
+      .setInteractive({ useHandCursor: true })
+      .setAlpha(0.001)
+      .setDepth(11);
+
+    hitArea.on('pointerup', () => {
+      soundManager.playClick();
       this.scene.start('Game');
     });
+
+    // Menu button
+    const menuBtnY = btnY + btnH + 12;
+    const menuText = this.add.text(width / 2, menuBtnY, '🏠 메인 메뉴', {
+      fontSize: '14px', color: '#888888',
+    }).setOrigin(0.5).setDepth(10).setInteractive({ useHandCursor: true });
+
+    menuText.on('pointerup', () => {
+      soundManager.playClick();
+      this.scene.start('Boot');
+    });
+
+    // Continuous celebration
+    this.time.addEvent({
+      delay: 800,
+      callback: () => this.spawnCelebrationParticles(width, height),
+      loop: true,
+    });
+  }
+
+  private spawnCelebrationParticles(width: number, height: number): void {
+    const colors = [0xffd54f, 0xff5252, 0x42a5f5, 0x66bb6a, 0xab47bc, 0xff1744, 0xffee58];
+    const count = 20;
+
+    for (let i = 0; i < count; i++) {
+      const g = this.add.graphics();
+      const color = colors[Math.floor(Math.random() * colors.length)];
+      const size = 2 + Math.random() * 4;
+
+      g.fillStyle(color, 0.9);
+      if (Math.random() > 0.5) {
+        g.fillCircle(0, 0, size);
+      } else {
+        g.fillRect(-size, -size, size * 2, size * 2);
+      }
+
+      const startX = Math.random() * width;
+      const startY = -10 - Math.random() * 50;
+      g.setPosition(startX, startY);
+      g.setDepth(5);
+
+      this.tweens.add({
+        targets: g,
+        y: height + 20,
+        x: startX + (Math.random() - 0.5) * 100,
+        rotation: Math.random() * Math.PI * 4,
+        alpha: 0,
+        duration: 2000 + Math.random() * 2000,
+        ease: 'Sine.easeIn',
+        onComplete: () => g.destroy(),
+      });
+    }
   }
 }
