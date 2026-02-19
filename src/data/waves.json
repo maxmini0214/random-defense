@@ -1,0 +1,179 @@
+{
+  "waves": [
+    {
+      "wave": 1,
+      "groups": [{ "type": "normal", "count": 8, "hp": 50 }],
+      "reward": 80
+    },
+    {
+      "wave": 2,
+      "groups": [{ "type": "normal", "count": 10, "hp": 65 }],
+      "reward": 90
+    },
+    {
+      "wave": 3,
+      "groups": [{ "type": "fast", "count": 12, "hp": 40 }],
+      "reward": 85
+    },
+    {
+      "wave": 4,
+      "groups": [
+        { "type": "normal", "count": 8, "hp": 80 },
+        { "type": "tank", "count": 2, "hp": 200 }
+      ],
+      "reward": 100
+    },
+    {
+      "wave": 5,
+      "groups": [{ "type": "boss", "count": 1, "hp": 800 }],
+      "reward": 150
+    },
+    {
+      "wave": 6,
+      "groups": [{ "type": "normal", "count": 12, "hp": 100 }],
+      "reward": 110
+    },
+    {
+      "wave": 7,
+      "groups": [{ "type": "fast", "count": 15, "hp": 70 }],
+      "reward": 105
+    },
+    {
+      "wave": 8,
+      "groups": [{ "type": "tank", "count": 6, "hp": 350 }],
+      "reward": 120
+    },
+    {
+      "wave": 9,
+      "groups": [
+        { "type": "normal", "count": 10, "hp": 130 },
+        { "type": "flying", "count": 5, "hp": 100 }
+      ],
+      "reward": 115
+    },
+    {
+      "wave": 10,
+      "groups": [
+        { "type": "boss", "count": 1, "hp": 2000 },
+        { "type": "normal", "count": 4, "hp": 150 }
+      ],
+      "reward": 200
+    },
+    {
+      "wave": 11,
+      "groups": [
+        { "type": "fast", "count": 15, "hp": 100 },
+        { "type": "normal", "count": 8, "hp": 170 }
+      ],
+      "reward": 130
+    },
+    {
+      "wave": 12,
+      "groups": [
+        { "type": "tank", "count": 5, "hp": 500 },
+        { "type": "flying", "count": 8, "hp": 150 }
+      ],
+      "reward": 140
+    },
+    {
+      "wave": 13,
+      "groups": [{ "type": "normal", "count": 20, "hp": 200 }],
+      "reward": 135
+    },
+    {
+      "wave": 14,
+      "groups": [{ "type": "fast", "count": 25, "hp": 130 }],
+      "reward": 130
+    },
+    {
+      "wave": 15,
+      "groups": [
+        { "type": "boss", "count": 1, "hp": 5000 },
+        { "type": "normal", "count": 8, "hp": 200 }
+      ],
+      "reward": 300
+    },
+    {
+      "wave": 16,
+      "groups": [
+        { "type": "tank", "count": 6, "hp": 700 },
+        { "type": "normal", "count": 12, "hp": 250 }
+      ],
+      "reward": 160
+    },
+    {
+      "wave": 17,
+      "groups": [{ "type": "flying", "count": 20, "hp": 250 }],
+      "reward": 150
+    },
+    {
+      "wave": 18,
+      "groups": [
+        { "type": "fast", "count": 20, "hp": 180 },
+        { "type": "tank", "count": 4, "hp": 800 }
+      ],
+      "reward": 165
+    },
+    {
+      "wave": 19,
+      "groups": [
+        { "type": "normal", "count": 8, "hp": 350 },
+        { "type": "fast", "count": 7, "hp": 350 },
+        { "type": "tank", "count": 5, "hp": 350 },
+        { "type": "flying", "count": 5, "hp": 350 }
+      ],
+      "reward": 170
+    },
+    {
+      "wave": 20,
+      "groups": [
+        { "type": "boss", "count": 2, "hp": 8000 },
+        { "type": "normal", "count": 10, "hp": 300 }
+      ],
+      "reward": 400
+    },
+    {
+      "wave": 21,
+      "groups": [{ "type": "tank", "count": 10, "hp": 1200 }],
+      "reward": 190
+    },
+    {
+      "wave": 22,
+      "groups": [
+        { "type": "fast", "count": 20, "hp": 300 },
+        { "type": "flying", "count": 15, "hp": 280 }
+      ],
+      "reward": 185
+    },
+    {
+      "wave": 23,
+      "groups": [
+        { "type": "normal", "count": 10, "hp": 500 },
+        { "type": "fast", "count": 7, "hp": 500 },
+        { "type": "tank", "count": 6, "hp": 500 },
+        { "type": "flying", "count": 7, "hp": 500 }
+      ],
+      "reward": 200
+    },
+    {
+      "wave": 24,
+      "groups": [
+        { "type": "tank", "count": 8, "hp": 1500 },
+        { "type": "fast", "count": 20, "hp": 400 }
+      ],
+      "reward": 210
+    },
+    {
+      "wave": 25,
+      "groups": [{ "type": "boss", "count": 1, "hp": 50000 }],
+      "reward": 0
+    }
+  ],
+  "enemyTypes": {
+    "normal":  { "speedMultiplier": 1.0, "hpMultiplier": 1.0, "armor": 0, "color": "#8bc34a", "shape": "square" },
+    "fast":    { "speedMultiplier": 1.8, "hpMultiplier": 0.6, "armor": 0, "color": "#42a5f5", "shape": "triangle" },
+    "tank":    { "speedMultiplier": 0.6, "hpMultiplier": 2.5, "armor": 10, "color": "#ef5350", "shape": "square" },
+    "flying":  { "speedMultiplier": 1.2, "hpMultiplier": 0.8, "armor": 0, "color": "#ffd54f", "shape": "diamond" },
+    "boss":    { "speedMultiplier": 0.5, "hpMultiplier": 8.0, "armor": 20, "color": "#d32f2f", "shape": "hexagon" }
+  }
+}

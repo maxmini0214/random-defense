@@ -1,0 +1,57 @@
+{
+  "warrior": {
+    "name": "전사",
+    "icon": "⚔",
+    "stats": {
+      "common":  { "atk": 15,  "attackSpeed": 0.8, "range": 60,  "abilities": [] },
+      "rare":    { "atk": 35,  "attackSpeed": 0.7, "range": 65,  "abilities": [{ "type": "critChance", "chance": 0.10, "multiplier": 2.0 }] },
+      "epic":    { "atk": 80,  "attackSpeed": 0.6, "range": 70,  "abilities": [{ "type": "critChance", "chance": 0.20, "multiplier": 2.0 }] },
+      "legend":  { "atk": 180, "attackSpeed": 0.5, "range": 80,  "abilities": [{ "type": "critChance", "chance": 0.30, "multiplier": 3.0 }, { "type": "stun", "duration": 0.5 }] },
+      "mythic":  { "atk": 400, "attackSpeed": 0.4, "range": 90,  "abilities": [{ "type": "critChance", "chance": 0.40, "multiplier": 3.0 }, { "type": "stun", "duration": 1.0 }, { "type": "splash", "radius": 40 }] }
+    }
+  },
+  "archer": {
+    "name": "궁수",
+    "icon": "🏹",
+    "stats": {
+      "common":  { "atk": 8,   "attackSpeed": 0.5, "range": 150, "abilities": [] },
+      "rare":    { "atk": 18,  "attackSpeed": 0.45,"range": 160, "abilities": [{ "type": "multishot", "count": 2, "damageRatio": 0.5 }] },
+      "epic":    { "atk": 40,  "attackSpeed": 0.4, "range": 170, "abilities": [{ "type": "multishot", "count": 3, "damageRatio": 0.5 }] },
+      "legend":  { "atk": 90,  "attackSpeed": 0.35,"range": 180, "abilities": [{ "type": "multishot", "count": 4, "damageRatio": 0.5 }, { "type": "pierce", "count": 2 }] },
+      "mythic":  { "atk": 200, "attackSpeed": 0.3, "range": 200, "abilities": [{ "type": "multishot", "count": 5, "damageRatio": 0.5 }, { "type": "pierce", "count": 99 }, { "type": "critChance", "chance": 0.15, "multiplier": 2.0 }] }
+    }
+  },
+  "mage": {
+    "name": "마법사",
+    "icon": "🔮",
+    "stats": {
+      "common":  { "atk": 12,  "attackSpeed": 1.2, "range": 120, "abilities": [{ "type": "splash", "radius": 30 }] },
+      "rare":    { "atk": 28,  "attackSpeed": 1.1, "range": 130, "abilities": [{ "type": "splash", "radius": 40 }] },
+      "epic":    { "atk": 65,  "attackSpeed": 1.0, "range": 140, "abilities": [{ "type": "splash", "radius": 50 }, { "type": "slow", "percent": 0.20, "duration": 1.0 }] },
+      "legend":  { "atk": 150, "attackSpeed": 0.9, "range": 150, "abilities": [{ "type": "splash", "radius": 60 }, { "type": "slow", "percent": 0.30, "duration": 2.0 }] },
+      "mythic":  { "atk": 350, "attackSpeed": 0.8, "range": 170, "abilities": [{ "type": "splash", "radius": 80 }, { "type": "slow", "percent": 0.50, "duration": 2.0 }, { "type": "dot", "damage": 50, "interval": 1.0 }] }
+    }
+  },
+  "supporter": {
+    "name": "서포터",
+    "icon": "💚",
+    "stats": {
+      "common":  { "atk": 5,   "attackSpeed": 1.5, "range": 100, "abilities": [{ "type": "buffAtk", "percent": 0.10 }] },
+      "rare":    { "atk": 10,  "attackSpeed": 1.4, "range": 110, "abilities": [{ "type": "buffAtk", "percent": 0.15 }, { "type": "buffSpeed", "percent": 0.05 }] },
+      "epic":    { "atk": 22,  "attackSpeed": 1.3, "range": 120, "abilities": [{ "type": "buffAtk", "percent": 0.25 }, { "type": "buffSpeed", "percent": 0.10 }] },
+      "legend":  { "atk": 50,  "attackSpeed": 1.2, "range": 130, "abilities": [{ "type": "buffAtk", "percent": 0.35 }, { "type": "buffSpeed", "percent": 0.15 }, { "type": "buffRange", "percent": 0.10 }] },
+      "mythic":  { "atk": 120, "attackSpeed": 1.0, "range": 150, "abilities": [{ "type": "buffAtkGlobal", "percent": 0.20 }, { "type": "buffAtk", "percent": 0.50 }, { "type": "buffSpeed", "percent": 0.20 }] }
+    }
+  },
+  "special": {
+    "name": "특수",
+    "icon": "⚡",
+    "stats": {
+      "common":  { "atk": 10,  "attackSpeed": 1.0, "range": 130, "abilities": [{ "type": "slow", "percent": 0.15, "duration": 2.0 }] },
+      "rare":    { "atk": 22,  "attackSpeed": 0.9, "range": 140, "abilities": [{ "type": "slow", "percent": 0.20, "duration": 2.0 }, { "type": "armorReduce", "percent": 0.10 }] },
+      "epic":    { "atk": 50,  "attackSpeed": 0.85,"range": 150, "abilities": [{ "type": "slow", "percent": 0.30, "duration": 3.0 }, { "type": "armorReduce", "percent": 0.20 }] },
+      "legend":  { "atk": 110, "attackSpeed": 0.8, "range": 160, "abilities": [{ "type": "slow", "percent": 0.40, "duration": 3.0 }, { "type": "armorReduce", "percent": 0.30 }, { "type": "dot", "damage": 30, "interval": 1.0 }] },
+      "mythic":  { "atk": 250, "attackSpeed": 0.7, "range": 180, "abilities": [{ "type": "slow", "percent": 0.50, "duration": 4.0 }, { "type": "armorReduce", "percent": 0.40 }, { "type": "dot", "damage": 80, "interval": 1.0 }, { "type": "freeze", "interval": 5.0, "duration": 1.5 }] }
+    }
+  }
+}

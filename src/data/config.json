@@ -1,0 +1,78 @@
+{
+  "game": {
+    "width": 390,
+    "height": 844,
+    "backgroundColor": "#1a1a2e"
+  },
+  "economy": {
+    "startingGold": 150,
+    "summonCost": 50,
+    "sellReturn": 25,
+    "waveSkipBonus": 20,
+    "killReward": {
+      "normal": 5,
+      "fast": 4,
+      "tank": 8,
+      "flying": 6,
+      "boss": 50
+    }
+  },
+  "player": {
+    "startingLives": 20,
+    "bossLifeDamage": 5
+  },
+  "slots": {
+    "rows": 3,
+    "cols": 5,
+    "total": 15
+  },
+  "summonRates": {
+    "grade": {
+      "common": 0.55,
+      "rare": 0.30,
+      "epic": 0.12,
+      "legend": 0.03
+    },
+    "type": {
+      "warrior": 0.20,
+      "archer": 0.20,
+      "mage": 0.20,
+      "supporter": 0.20,
+      "special": 0.20
+    }
+  },
+  "wave": {
+    "spawnInterval": 800,
+    "prepareTime": 8000,
+    "totalWaves": 25
+  },
+  "colors": {
+    "background": "#1a1a2e",
+    "path": "#e8d5b7",
+    "grade": {
+      "common": "#9e9e9e",
+      "rare": "#42a5f5",
+      "epic": "#ab47bc",
+      "legend": "#ffd54f",
+      "mythic": "#ff5252"
+    },
+    "unitType": {
+      "warrior": "#ef5350",
+      "archer": "#66bb6a",
+      "mage": "#5c6bc0",
+      "supporter": "#ffee58",
+      "special": "#26c6da"
+    },
+    "enemy": {
+      "normal": "#8bc34a",
+      "fast": "#42a5f5",
+      "tank": "#ef5350",
+      "flying": "#ffd54f",
+      "boss": "#d32f2f"
+    },
+    "ui": {
+      "text": "#fafafa",
+      "background": "#2d2d44"
+    }
+  }
+}
