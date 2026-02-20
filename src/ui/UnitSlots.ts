@@ -85,18 +85,28 @@ export class UnitSlots extends Phaser.GameObjects.Container {
    * Given scene coordinates, return the slot index or -1 if not over any slot.
    */
   public getSlotAtPosition(sceneX: number, sceneY: number): number {
+    // Use expanded hit area for better mobile touch detection
+    const touchPadding = 8;
+    let closestSlot = -1;
+    let closestDist = Infinity;
+
     for (let i = 0; i < configData.slots.total; i++) {
-      const tl = this.getSlotTopLeft(i);
+      const center = this.getSlotCenter(i);
+      const dx = sceneX - center.x;
+      const dy = sceneY - center.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const halfSize = this.slotSize / 2 + touchPadding;
+
       if (
-        sceneX >= tl.x &&
-        sceneX <= tl.x + this.slotSize &&
-        sceneY >= tl.y &&
-        sceneY <= tl.y + this.slotSize
+        Math.abs(sceneX - center.x) <= halfSize &&
+        Math.abs(sceneY - center.y) <= halfSize &&
+        dist < closestDist
       ) {
-        return i;
+        closestSlot = i;
+        closestDist = dist;
       }
     }
-    return -1;
+    return closestSlot;
   }
 
   /**

@@ -381,7 +381,7 @@ export class GameScene extends Phaser.Scene {
       if (!this.isDragging) {
         const dx = pointer.x - this.dragOriginalPos.x;
         const dy = pointer.y - this.dragOriginalPos.y;
-        if (Math.sqrt(dx * dx + dy * dy) < 8) return;
+        if (Math.sqrt(dx * dx + dy * dy) < 5) return;
         this.startDrag();
       }
 
