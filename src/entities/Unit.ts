@@ -31,6 +31,8 @@ export class Unit extends Phaser.GameObjects.Container {
   public grade: UnitGrade;
   public stats: UnitStats;
   public slotIndex: number;
+  public gridCol: number = -1;
+  public gridRow: number = -1;
 
   // Attack state
   private attackCooldown: number = 0;
