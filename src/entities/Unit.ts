@@ -48,6 +48,11 @@ export class Unit extends Phaser.GameObjects.Container {
   // Freeze timer for special mythic
   private freezeAccum: number = 0;
 
+  // Archer burst state
+  private archerBurstRemaining: number = 0;
+  private archerBurstDelay: number = 0;
+  private archerBurstTarget: Enemy | null = null;
+
   // Damage popup callback (set by Game scene)
   public onDamageDealt: ((x: number, y: number, damage: number, isCrit: boolean) => void) | null = null;
 
@@ -94,7 +99,7 @@ export class Unit extends Phaser.GameObjects.Container {
     this.buffGlow = scene.add.graphics();
     this.add(this.buffGlow);
 
-    // Range circle (hidden by default, shown when attacking)
+    // Range circle (hidden by default)
     this.rangeCircle = scene.add.graphics();
     this.rangeCircle.setAlpha(0);
     this.add(this.rangeCircle);
@@ -119,7 +124,6 @@ export class Unit extends Phaser.GameObjects.Container {
     this.baseCircle.clear();
 
     if (this.grade === 'mythic') {
-      // Mythic: double ring with red glow
       this.baseCircle.fillStyle(0xff1744, 0.3);
       this.baseCircle.fillCircle(0, 0, radius + 3);
       this.baseCircle.fillStyle(0xff5252, 0.9);
@@ -131,7 +135,6 @@ export class Unit extends Phaser.GameObjects.Container {
       this.baseCircle.lineStyle(1, 0xffffff, 0.5);
       this.baseCircle.strokeCircle(0, 0, radius + 3);
     } else if (this.grade === 'legend') {
-      // Legend: gold with shimmer border
       this.baseCircle.fillStyle(gradeColor, 0.9);
       this.baseCircle.fillCircle(0, 0, radius);
       this.baseCircle.fillStyle(typeColor, 0.7);
@@ -161,7 +164,7 @@ export class Unit extends Phaser.GameObjects.Container {
     this.buffGlow.strokeCircle(0, 0, 26);
   }
 
-  /** Update mythic pulsing visual (call from updateAttack) */
+  /** Update mythic pulsing visual */
   private updateMythicPulse(delta: number): void {
     if (this.grade !== 'mythic') return;
     this.mythicPulseTimer += delta / 1000;
@@ -207,10 +210,6 @@ export class Unit extends Phaser.GameObjects.Container {
 
   // ---- Attack AI ----
 
-  /**
-   * Main attack update. Call each frame from Game scene.
-   * Returns new projectiles spawned this frame.
-   */
   public updateAttack(delta: number, enemies: Enemy[]): Projectile[] {
     const deltaSec = delta / 1000;
     const newProjectiles: Projectile[] = [];
@@ -228,12 +227,57 @@ export class Unit extends Phaser.GameObjects.Container {
       }
     }
 
+    // Handle archer burst fire (delayed shots)
+    if (this.unitType === 'archer' && this.archerBurstRemaining > 0) {
+      this.archerBurstDelay -= deltaSec;
+      if (this.archerBurstDelay <= 0) {
+        this.archerBurstDelay = 0.1; // 100ms between burst shots
+        this.archerBurstRemaining--;
+
+        const target = this.archerBurstTarget;
+        if (target && !target.isDead && target.active) {
+          const atk = this.effectiveAtk;
+          const burstDmg = Math.round(atk * 0.5);
+          const pierceAbility = this.findAbility('pierce');
+          const pierceCount = pierceAbility ? (pierceAbility.count as number) : 0;
+          const dmgCallback = this.onDamageDealt;
+          const inRange = this.getEnemiesInRange(enemies, this.effectiveRange);
+          const hitEnemies: Set<Enemy> = new Set();
+
+          const proj = new Projectile(
+            this.scene, this.x, this.y, target, burstDmg,
+            pierceCount > 0 ? 0xffd54f : 0x66bb6a, // Yellow if piercing, green otherwise
+            (hitEnemy: Enemy) => {
+              hitEnemy.takeDamage(burstDmg);
+              dmgCallback?.(hitEnemy.x, hitEnemy.y, burstDmg, false);
+              hitEnemies.add(hitEnemy);
+              if (pierceCount > 0) {
+                for (const enemy of inRange) {
+                  if (hitEnemies.size >= pierceCount + 1) break;
+                  if (hitEnemies.has(enemy) || enemy.isDead) continue;
+                  const dx = enemy.x - hitEnemy.x;
+                  const dy = enemy.y - hitEnemy.y;
+                  if (Math.sqrt(dx * dx + dy * dy) < 60) {
+                    enemy.takeDamage(burstDmg);
+                    hitEnemies.add(enemy);
+                    dmgCallback?.(enemy.x, enemy.y, burstDmg, false);
+                  }
+                }
+              }
+            },
+            400, // Fast arrow speed
+            'arrow'
+          );
+          newProjectiles.push(proj);
+        } else {
+          this.archerBurstRemaining = 0; // Target dead, stop bursting
+        }
+      }
+    }
+
     // Cooldown
     this.attackCooldown -= deltaSec;
     if (this.attackCooldown > 0) return newProjectiles;
-
-    // Supporter: buff instead of attacking normally (still does light attack)
-    // All units can attack; supporters also apply buffs (handled externally)
 
     // Find target(s)
     const range = this.effectiveRange;
@@ -283,8 +327,6 @@ export class Unit extends Phaser.GameObjects.Container {
     const results: Enemy[] = [];
     for (const enemy of enemies) {
       if (enemy.isDead || enemy.reachedEnd || !enemy.active) continue;
-
-      // Flying enemies can't be attacked by warriors (melee)
       if (enemy.isFlying && this.unitType === 'warrior') continue;
 
       const dx = enemy.x - this.x;
@@ -294,20 +336,18 @@ export class Unit extends Phaser.GameObjects.Container {
         results.push(enemy);
       }
     }
-    // Sort by path progress (closest to end = highest priority)
     results.sort((a, b) => b.pathT - a.pathT);
     return results;
   }
 
-  // ---- WARRIOR: Instant melee hit ----
+  // ---- WARRIOR: Instant melee hit with slash arc ----
   private attackWarrior(inRange: Enemy[], atk: number, color: number): Projectile[] {
-    const target = inRange[0]; // Most progressed enemy
+    const target = inRange[0];
     if (!target) return [];
 
     let damage = atk;
     let didCrit = false;
 
-    // Crit check
     const critAbility = this.findAbility('critChance');
     if (critAbility) {
       const chance = critAbility.chance as number;
@@ -318,7 +358,7 @@ export class Unit extends Phaser.GameObjects.Container {
       }
     }
 
-    // Stun
+    // Stun (on crit only for legend+)
     const stunAbility = this.findAbility('stun');
     if (stunAbility && didCrit) {
       target.applyStun(stunAbility.duration as number);
@@ -328,6 +368,7 @@ export class Unit extends Phaser.GameObjects.Container {
     const splashAbility = this.findAbility('splash');
     if (splashAbility && didCrit) {
       const splashRadius = splashAbility.radius as number;
+      this.showWarriorSplash(target.x, target.y, splashRadius);
       for (const enemy of inRange) {
         if (enemy === target) continue;
         const dx = enemy.x - target.x;
@@ -339,16 +380,15 @@ export class Unit extends Phaser.GameObjects.Container {
       }
     }
 
-    // Instant hit (melee) - show a quick line
     target.takeDamage(damage);
     this.onDamageDealt?.(target.x, target.y, damage, didCrit);
-    this.showMeleeEffect(target, color, didCrit);
+    this.showSlashArc(target, color, didCrit);
 
     return [];
   }
 
-  // ---- ARCHER: Projectile, multishot, pierce ----
-  private attackArcher(inRange: Enemy[], atk: number, color: number): Projectile[] {
+  // ---- ARCHER: Burst fire projectiles ----
+  private attackArcher(inRange: Enemy[], atk: number, _color: number): Projectile[] {
     const projectiles: Projectile[] = [];
     const multishotAbility = this.findAbility('multishot');
     const pierceAbility = this.findAbility('pierce');
@@ -357,55 +397,57 @@ export class Unit extends Phaser.GameObjects.Container {
     const shotCount = multishotAbility ? (multishotAbility.count as number) : 1;
     const pierceCount = pierceAbility ? (pierceAbility.count as number) : 0;
 
-    for (let shot = 0; shot < Math.min(shotCount, inRange.length); shot++) {
-      const target = inRange[shot % inRange.length];
-      const isFirst = shot === 0;
-      let damage = isFirst ? atk : Math.round(atk * ((multishotAbility?.damageRatio as number) || 0.5));
+    // First shot fires immediately
+    const target = inRange[0];
+    if (!target) return [];
 
-      // Crit
-      if (critAbility && Math.random() < (critAbility.chance as number)) {
-        damage = Math.round(damage * (critAbility.multiplier as number));
-      }
+    let damage = atk;
+    let isCrit = false;
+    if (critAbility && Math.random() < (critAbility.chance as number)) {
+      damage = Math.round(damage * (critAbility.multiplier as number));
+      isCrit = true;
+    }
 
-      const hitEnemies: Set<Enemy> = new Set();
-      const dmgCallback = this.onDamageDealt;
+    const arrowColor = pierceCount > 0 ? 0xffd54f : 0x66bb6a;
+    const hitEnemies: Set<Enemy> = new Set();
+    const dmgCallback = this.onDamageDealt;
 
-      const proj = new Projectile(
-        this.scene,
-        this.x,
-        this.y,
-        target,
-        damage,
-        color,
-        (hitEnemy: Enemy) => {
-          hitEnemy.takeDamage(damage);
-          dmgCallback?.(hitEnemy.x, hitEnemy.y, damage, false);
-          hitEnemies.add(hitEnemy);
-
-          // Pierce: continue to next enemies
-          if (pierceCount > 0) {
-            for (const enemy of inRange) {
-              if (hitEnemies.size >= pierceCount + 1) break;
-              if (hitEnemies.has(enemy) || enemy.isDead) continue;
-              const dx = enemy.x - hitEnemy.x;
-              const dy = enemy.y - hitEnemy.y;
-              const dist = Math.sqrt(dx * dx + dy * dy);
-              if (dist < 60) {
-                enemy.takeDamage(damage);
-                hitEnemies.add(enemy);
-              }
+    const proj = new Projectile(
+      this.scene, this.x, this.y, target, damage, arrowColor,
+      (hitEnemy: Enemy) => {
+        hitEnemy.takeDamage(damage);
+        dmgCallback?.(hitEnemy.x, hitEnemy.y, damage, isCrit);
+        hitEnemies.add(hitEnemy);
+        if (pierceCount > 0) {
+          for (const enemy of inRange) {
+            if (hitEnemies.size >= pierceCount + 1) break;
+            if (hitEnemies.has(enemy) || enemy.isDead) continue;
+            const dx = enemy.x - hitEnemy.x;
+            const dy = enemy.y - hitEnemy.y;
+            if (Math.sqrt(dx * dx + dy * dy) < 60) {
+              enemy.takeDamage(damage);
+              hitEnemies.add(enemy);
+              dmgCallback?.(enemy.x, enemy.y, damage, false);
             }
           }
-        },
-        350
-      );
-      projectiles.push(proj);
+        }
+      },
+      400,
+      'arrow'
+    );
+    projectiles.push(proj);
+
+    // Queue burst shots (2nd, 3rd, etc.)
+    if (shotCount > 1) {
+      this.archerBurstRemaining = shotCount - 1;
+      this.archerBurstDelay = 0.1; // 100ms before next burst shot
+      this.archerBurstTarget = target;
     }
 
     return projectiles;
   }
 
-  // ---- MAGE: Projectile + splash AoE ----
+  // ---- MAGE: Slow large projectile + splash AoE ----
   private attackMage(inRange: Enemy[], atk: number, color: number, allEnemies: Enemy[]): Projectile[] {
     const target = inRange[0];
     if (!target) return [];
@@ -417,34 +459,28 @@ export class Unit extends Phaser.GameObjects.Container {
     const dmgCallback = this.onDamageDealt;
 
     const proj = new Projectile(
-      this.scene,
-      this.x,
-      this.y,
-      target,
-      atk,
-      color,
+      this.scene, this.x, this.y, target, atk, 0x5c6bc0,
       (hitEnemy: Enemy) => {
-        // Primary damage
         hitEnemy.takeDamage(atk);
         dmgCallback?.(hitEnemy.x, hitEnemy.y, atk, false);
 
-        // Splash damage to nearby enemies
         if (splashRadius > 0) {
+          // Purple explosion visual
+          this.showMageSplash(hitEnemy.x, hitEnemy.y, splashRadius);
+
           for (const enemy of allEnemies) {
             if (enemy === hitEnemy || enemy.isDead || !enemy.active) continue;
             const dx = enemy.x - hitEnemy.x;
             const dy = enemy.y - hitEnemy.y;
             const dist = Math.sqrt(dx * dx + dy * dy);
             if (dist <= splashRadius) {
-              enemy.takeDamage(Math.round(atk * 0.6));
+              const splashDmg = Math.round(atk * 0.6);
+              enemy.takeDamage(splashDmg);
+              dmgCallback?.(enemy.x, enemy.y, splashDmg, false);
             }
           }
-
-          // Show splash visual
-          this.showSplashEffect(hitEnemy.x, hitEnemy.y, splashRadius, color);
         }
 
-        // Apply slow to hit enemies
         if (slowAbility) {
           const targets = [hitEnemy];
           if (splashRadius > 0) {
@@ -460,35 +496,31 @@ export class Unit extends Phaser.GameObjects.Container {
           }
         }
 
-        // Apply DoT
         if (dotAbility) {
           hitEnemy.applyDot(dotAbility.damage as number, dotAbility.interval as number, 3);
         }
       },
-      250
+      180, // Slow, large projectile
+      'mage'
     );
 
     return [proj];
   }
 
-  // ---- SUPPORTER: Light attack + buffs applied externally ----
+  // ---- SUPPORTER: Light attack ----
   private attackSupporter(inRange: Enemy[], atk: number, color: number): Projectile[] {
     const target = inRange[0];
     if (!target) return [];
 
     const dmgCallback = this.onDamageDealt;
     const proj = new Projectile(
-      this.scene,
-      this.x,
-      this.y,
-      target,
-      atk,
-      color,
+      this.scene, this.x, this.y, target, atk, 0xffee58,
       (hitEnemy: Enemy) => {
         hitEnemy.takeDamage(atk);
         dmgCallback?.(hitEnemy.x, hitEnemy.y, atk, false);
       },
-      200
+      200,
+      'supporter'
     );
 
     return [proj];
@@ -505,7 +537,7 @@ export class Unit extends Phaser.GameObjects.Container {
     const freezeAbility = this.findAbility('freeze');
     const dmgCallback = this.onDamageDealt;
 
-    // Track freeze accumulator for periodic freeze
+    // Periodic freeze (mythic)
     if (freezeAbility) {
       this.freezeAccum += this.effectiveAttackSpeed;
       if (this.freezeAccum >= (freezeAbility.interval as number)) {
@@ -516,48 +548,36 @@ export class Unit extends Phaser.GameObjects.Container {
             hitEnemy.takeDamage(atk);
             dmgCallback?.(hitEnemy.x, hitEnemy.y, atk, true);
             hitEnemy.applyFreeze(freezeAbility.duration as number);
+            this.showFreezeEffect(hitEnemy.x, hitEnemy.y);
             if (slowAbility) hitEnemy.applySlow(slowAbility.percent as number, slowAbility.duration as number);
             if (armorReduceAbility) hitEnemy.applyArmorReduce(armorReduceAbility.percent as number, slowAbility?.duration as number || 3);
             if (dotAbility) hitEnemy.applyDot(dotAbility.damage as number, dotAbility.interval as number, 3);
           },
-          280
+          280,
+          'electric'
         );
         return [proj];
       }
     }
 
     const proj = new Projectile(
-      this.scene,
-      this.x,
-      this.y,
-      target,
-      atk,
-      color,
+      this.scene, this.x, this.y, target, atk, 0x26c6da,
       (hitEnemy: Enemy) => {
         hitEnemy.takeDamage(atk);
         dmgCallback?.(hitEnemy.x, hitEnemy.y, atk, false);
-        if (slowAbility) {
-          hitEnemy.applySlow(slowAbility.percent as number, slowAbility.duration as number);
-        }
-        if (armorReduceAbility) {
-          hitEnemy.applyArmorReduce(armorReduceAbility.percent as number, slowAbility?.duration as number || 3);
-        }
-        if (dotAbility) {
-          hitEnemy.applyDot(dotAbility.damage as number, dotAbility.interval as number, 3);
-        }
+        if (slowAbility) hitEnemy.applySlow(slowAbility.percent as number, slowAbility.duration as number);
+        if (armorReduceAbility) hitEnemy.applyArmorReduce(armorReduceAbility.percent as number, slowAbility?.duration as number || 3);
+        if (dotAbility) hitEnemy.applyDot(dotAbility.damage as number, dotAbility.interval as number, 3);
       },
-      280
+      280,
+      'electric'
     );
 
     return [proj];
   }
 
-  // ---- Buff system (called by Game scene for supporters) ----
+  // ---- Buff system ----
 
-  /**
-   * Calculate the buff this supporter provides.
-   * Returns null if not a supporter.
-   */
   public getSupporterBuff(): UnitBuff | null {
     if (this.unitType !== 'supporter') return null;
 
@@ -575,7 +595,6 @@ export class Unit extends Phaser.GameObjects.Container {
           buff.rangePercent = ability.percent as number;
           break;
         case 'buffAtkGlobal':
-          // Global buff handled separately - stored as atkPercent for now
           buff.atkPercent = ability.percent as number;
           break;
       }
@@ -584,23 +603,18 @@ export class Unit extends Phaser.GameObjects.Container {
     return buff;
   }
 
-  /**
-   * Check if this supporter has a global ATK buff.
-   */
   public getGlobalAtkBuff(): number {
     if (this.unitType !== 'supporter') return 0;
     const ability = this.findAbility('buffAtkGlobal');
     return ability ? (ability.percent as number) : 0;
   }
 
-  /** Reset buff to zero (called before recalculation each frame) */
   public resetBuff(): void {
     this.buff.atkPercent = 0;
     this.buff.speedPercent = 0;
     this.buff.rangePercent = 0;
   }
 
-  /** Add a buff (accumulates) */
   public applyBuff(buff: UnitBuff): void {
     this.buff.atkPercent += buff.atkPercent;
     this.buff.speedPercent += buff.speedPercent;
@@ -638,54 +652,159 @@ export class Unit extends Phaser.GameObjects.Container {
     });
   }
 
-  private showMeleeEffect(target: Enemy, color: number, isCrit: boolean): void {
+  /** Warrior: Slash arc effect (short curved line) */
+  private showSlashArc(target: Enemy, color: number, isCrit: boolean): void {
     if (!this.scene) return;
     const g = this.scene.add.graphics();
-    g.lineStyle(isCrit ? 3 : 2, color, 0.8);
-    g.lineBetween(this.x, this.y, target.x, target.y);
     g.setDepth(140);
+
+    const dx = target.x - this.x;
+    const dy = target.y - this.y;
+    const angle = Math.atan2(dy, dx);
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    const midX = this.x + dx * 0.6;
+    const midY = this.y + dy * 0.6;
+
+    // Draw slash arc
+    const arcRadius = Math.min(dist * 0.5, 25);
+    const lineWidth = isCrit ? 4 : 2.5;
+    g.lineStyle(lineWidth, isCrit ? 0xffd54f : color, isCrit ? 1 : 0.8);
+
+    g.beginPath();
+    const arcStart = angle - Math.PI * 0.4;
+    const arcEnd = angle + Math.PI * 0.4;
+    g.arc(midX, midY, arcRadius, arcStart, arcEnd, false);
+    g.strokePath();
+
+    // Extra flash for crit
+    if (isCrit) {
+      g.lineStyle(2, 0xffffff, 0.6);
+      g.arc(midX, midY, arcRadius + 3, arcStart, arcEnd, false);
+      g.strokePath();
+    }
 
     this.scene.tweens.add({
       targets: g,
       alpha: 0,
-      duration: 150,
+      duration: isCrit ? 250 : 150,
       onComplete: () => g.destroy(),
     });
 
-    // Crit text
-    if (isCrit) {
-      const critText = this.scene.add.text(target.x, target.y - 20, '💥CRIT!', {
-        fontSize: '10px',
-        color: '#ffd54f',
-        fontStyle: 'bold',
+    // Stun star icon
+    const stunAbility = this.findAbility('stun');
+    if (stunAbility && isCrit) {
+      const star = this.scene.add.text(target.x, target.y - 18, '⭐', {
+        fontSize: '12px',
       }).setOrigin(0.5).setDepth(200);
 
       this.scene.tweens.add({
-        targets: critText,
+        targets: star,
+        y: target.y - 28,
         alpha: 0,
-        y: critText.y - 20,
-        duration: 600,
-        onComplete: () => critText.destroy(),
+        duration: 500,
+        onComplete: () => star.destroy(),
       });
     }
   }
 
-  private showSplashEffect(x: number, y: number, radius: number, color: number): void {
+  /** Warrior mythic: Red shockwave splash */
+  private showWarriorSplash(x: number, y: number, radius: number): void {
     if (!this.scene) return;
     const g = this.scene.add.graphics();
-    g.lineStyle(2, color, 0.5);
-    g.strokeCircle(x, y, radius);
-    g.fillStyle(color, 0.15);
-    g.fillCircle(x, y, radius);
     g.setDepth(140);
+
+    // Red shockwave ring
+    g.lineStyle(3, 0xef5350, 0.8);
+    g.strokeCircle(x, y, 5);
+    g.fillStyle(0xef5350, 0.2);
+    g.fillCircle(x, y, 5);
 
     this.scene.tweens.add({
       targets: g,
+      scaleX: radius / 5,
+      scaleY: radius / 5,
       alpha: 0,
-      scaleX: 1.3,
-      scaleY: 1.3,
       duration: 300,
+      ease: 'Power2',
       onComplete: () => g.destroy(),
+    });
+  }
+
+  /** Mage: Purple explosion splash */
+  private showMageSplash(x: number, y: number, radius: number): void {
+    if (!this.scene) return;
+    const g = this.scene.add.graphics();
+    g.setDepth(140);
+
+    // Purple expanding explosion
+    g.lineStyle(2.5, 0xab47bc, 0.7);
+    g.strokeCircle(x, y, radius * 0.3);
+    g.fillStyle(0x5c6bc0, 0.2);
+    g.fillCircle(x, y, radius * 0.3);
+
+    this.scene.tweens.add({
+      targets: g,
+      scaleX: 3,
+      scaleY: 3,
+      alpha: 0,
+      duration: 350,
+      ease: 'Power2',
+      onComplete: () => g.destroy(),
+    });
+
+    // Purple particles
+    for (let i = 0; i < 5; i++) {
+      const p = this.scene.add.graphics();
+      p.fillStyle(0xab47bc, 0.6);
+      p.fillCircle(0, 0, 1.5);
+      p.setPosition(x, y);
+      p.setDepth(141);
+
+      const angle = Math.random() * Math.PI * 2;
+      const dist = radius * 0.5 + Math.random() * radius * 0.5;
+      this.scene.tweens.add({
+        targets: p,
+        x: x + Math.cos(angle) * dist,
+        y: y + Math.sin(angle) * dist,
+        alpha: 0,
+        duration: 300 + Math.random() * 200,
+        onComplete: () => p.destroy(),
+      });
+    }
+  }
+
+  /** Special mythic: Freeze burst effect */
+  private showFreezeEffect(x: number, y: number): void {
+    if (!this.scene) return;
+
+    // Cyan ice burst
+    const g = this.scene.add.graphics();
+    g.setDepth(140);
+    g.lineStyle(2, 0x26c6da, 0.9);
+    g.strokeCircle(x, y, 5);
+    g.fillStyle(0x26c6da, 0.3);
+    g.fillCircle(x, y, 5);
+
+    this.scene.tweens.add({
+      targets: g,
+      scaleX: 4,
+      scaleY: 4,
+      alpha: 0,
+      duration: 400,
+      onComplete: () => g.destroy(),
+    });
+
+    // Ice crystal text
+    const ice = this.scene.add.text(x, y - 15, '❄️', {
+      fontSize: '14px',
+    }).setOrigin(0.5).setDepth(200);
+
+    this.scene.tweens.add({
+      targets: ice,
+      y: y - 30,
+      alpha: 0,
+      duration: 600,
+      onComplete: () => ice.destroy(),
     });
   }
 

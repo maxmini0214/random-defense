@@ -12,20 +12,15 @@ interface EnemyTypeData {
 }
 
 interface DebuffState {
-  /** Slow: multiplicative speed reduction (0.0 = no slow, 0.5 = 50% slower) */
   slowPercent: number;
   slowTimer: number;
-  /** Armor reduction: flat percent of base armor removed */
   armorReducePercent: number;
   armorReduceTimer: number;
-  /** DoT: damage per tick */
   dotDamage: number;
   dotInterval: number;
   dotTimer: number;
   dotAccum: number;
-  /** Stun */
   stunTimer: number;
-  /** Freeze (periodic stun from special mythic) */
   freezeTimer: number;
 }
 
@@ -35,9 +30,9 @@ export class Enemy extends Phaser.GameObjects.Container {
   public currentHp: number;
   public baseArmor: number;
   public speedMultiplier: number;
-  public baseSpeed: number = 60; // pixels per second
+  public baseSpeed: number = 60;
   public isFlying: boolean;
-  public pathT: number = 0; // 0..1 progress along path
+  public pathT: number = 0;
   public isDead: boolean = false;
   public reachedEnd: boolean = false;
 
@@ -48,6 +43,7 @@ export class Enemy extends Phaser.GameObjects.Container {
   private debuffIndicator: Phaser.GameObjects.Graphics;
   private typeData: EnemyTypeData;
   private size: number;
+  private originalColor: number;
 
   constructor(
     scene: Phaser.Scene,
@@ -64,37 +60,28 @@ export class Enemy extends Phaser.GameObjects.Container {
     this.baseArmor = this.typeData.armor;
     this.speedMultiplier = this.typeData.speedMultiplier;
     this.isFlying = type === 'flying';
+    this.originalColor = Phaser.Display.Color.HexStringToColor(this.typeData.color).color;
 
     this.size = type === 'boss' ? 18 : 12;
 
     this.debuffs = {
-      slowPercent: 0,
-      slowTimer: 0,
-      armorReducePercent: 0,
-      armorReduceTimer: 0,
-      dotDamage: 0,
-      dotInterval: 1,
-      dotTimer: 0,
-      dotAccum: 0,
-      stunTimer: 0,
-      freezeTimer: 0,
+      slowPercent: 0, slowTimer: 0,
+      armorReducePercent: 0, armorReduceTimer: 0,
+      dotDamage: 0, dotInterval: 1, dotTimer: 0, dotAccum: 0,
+      stunTimer: 0, freezeTimer: 0,
     };
 
-    // Draw enemy shape
     this.shape = scene.add.graphics();
     this.drawShape();
     this.add(this.shape);
 
-    // HP bar
     this.hpBar = scene.add.graphics();
     this.drawHpBar();
     this.add(this.hpBar);
 
-    // Debuff indicator
     this.debuffIndicator = scene.add.graphics();
     this.add(this.debuffIndicator);
 
-    // Position at start of path
     const startPoint = path.getPoint(0);
     this.setPosition(startPoint.x, startPoint.y);
 
@@ -102,8 +89,15 @@ export class Enemy extends Phaser.GameObjects.Container {
   }
 
   private drawShape(): void {
-    const color = Phaser.Display.Color.HexStringToColor(this.typeData.color).color;
     const s = this.size;
+    // Determine color based on debuff state
+    let color = this.originalColor;
+    if (this.debuffs.freezeTimer > 0) {
+      color = 0x26c6da; // Cyan for frozen
+    } else if (this.debuffs.slowTimer > 0) {
+      // Blend toward blue for slow
+      color = this.blendColor(this.originalColor, 0x42a5f5, 0.4);
+    }
 
     this.shape.clear();
     this.shape.fillStyle(color, 1);
@@ -142,18 +136,28 @@ export class Enemy extends Phaser.GameObjects.Container {
     }
   }
 
+  private blendColor(c1: number, c2: number, t: number): number {
+    const r1 = (c1 >> 16) & 0xFF;
+    const g1 = (c1 >> 8) & 0xFF;
+    const b1 = c1 & 0xFF;
+    const r2 = (c2 >> 16) & 0xFF;
+    const g2 = (c2 >> 8) & 0xFF;
+    const b2 = c2 & 0xFF;
+    const r = Math.round(r1 + (r2 - r1) * t);
+    const g = Math.round(g1 + (g2 - g1) * t);
+    const b = Math.round(b1 + (b2 - b1) * t);
+    return (r << 16) | (g << 8) | b;
+  }
+
   private drawHpBar(): void {
     const barWidth = this.size * 2.5;
     const barHeight = 3;
     const barY = -this.size - 6;
 
     this.hpBar.clear();
-
-    // Background
     this.hpBar.fillStyle(0x000000, 0.5);
     this.hpBar.fillRect(-barWidth / 2, barY, barWidth, barHeight);
 
-    // HP fill
     const hpRatio = this.currentHp / this.maxHp;
     const fillColor = hpRatio > 0.5 ? 0x66bb6a : hpRatio > 0.25 ? 0xffa726 : 0xef5350;
     this.hpBar.fillStyle(fillColor, 1);
@@ -163,63 +167,87 @@ export class Enemy extends Phaser.GameObjects.Container {
   private drawDebuffIndicator(): void {
     this.debuffIndicator.clear();
     const y = this.size + 5;
-    let x = -8;
+    let x = -10;
     const iconSize = 3;
 
-    // Slow: blue snowflake-like icon
+    // Slow: blue snowflake + foot-level ice
     if (this.debuffs.slowTimer > 0) {
-      this.debuffIndicator.fillStyle(0x42a5f5, 0.9);
+      this.debuffIndicator.fillStyle(0x42a5f5, 0.8);
       this.debuffIndicator.fillCircle(x, y, iconSize);
-      this.debuffIndicator.lineStyle(1, 0x42a5f5, 0.6);
+      this.debuffIndicator.lineStyle(1, 0x42a5f5, 0.5);
       this.debuffIndicator.strokeCircle(x, y, iconSize + 1.5);
+      // Ice effect at feet
+      this.debuffIndicator.fillStyle(0x26c6da, 0.25);
+      this.debuffIndicator.fillEllipse(0, this.size + 2, this.size * 1.5, 4);
       x += 8;
     }
-    // Armor reduce: red down-arrow icon
+
+    // Armor reduce: red broken shield icon
     if (this.debuffs.armorReduceTimer > 0) {
       this.debuffIndicator.fillStyle(0xff5252, 0.9);
       this.debuffIndicator.fillTriangle(x, y + iconSize, x - iconSize, y - iconSize, x + iconSize, y - iconSize);
+      // Broken shield crack line
+      this.debuffIndicator.lineStyle(1, 0xff5252, 0.6);
+      this.debuffIndicator.lineBetween(x - 1, y - iconSize, x + 1, y + iconSize);
       x += 8;
     }
-    // DoT: green poison icon
+
+    // DoT: green poison bubbles
     if (this.debuffs.dotTimer > 0) {
       this.debuffIndicator.fillStyle(0x66bb6a, 0.9);
       this.debuffIndicator.fillCircle(x, y, iconSize);
       this.debuffIndicator.fillStyle(0x66bb6a, 0.5);
       this.debuffIndicator.fillCircle(x + 2, y - 2, 1.5);
+      this.debuffIndicator.fillCircle(x - 1, y - 3, 1);
       x += 8;
     }
-    // Stun/Freeze: yellow/cyan star
-    if (this.debuffs.stunTimer > 0 || this.debuffs.freezeTimer > 0) {
-      const isFrozen = this.debuffs.freezeTimer > 0;
-      const color = isFrozen ? 0x26c6da : 0xffd54f;
-      this.debuffIndicator.fillStyle(color, 0.9);
-      this.debuffIndicator.fillCircle(x, y, iconSize);
-      this.debuffIndicator.lineStyle(1.5, color, 0.5);
+
+    // Stun: yellow star
+    if (this.debuffs.stunTimer > 0 && this.debuffs.freezeTimer <= 0) {
+      this.debuffIndicator.fillStyle(0xffd54f, 0.9);
+      // Draw a simple star shape
+      this.drawStar(this.debuffIndicator, x, y - 2, 4, 5);
+      x += 8;
+    }
+
+    // Freeze: cyan crystal with flash
+    if (this.debuffs.freezeTimer > 0) {
+      this.debuffIndicator.fillStyle(0x26c6da, 0.9);
+      this.debuffIndicator.fillCircle(x, y, iconSize + 1);
+      this.debuffIndicator.lineStyle(1.5, 0xffffff, 0.6);
       this.debuffIndicator.strokeCircle(x, y, iconSize + 2);
 
-      // Flash effect for stun/freeze
-      if (isFrozen) {
-        this.shape.setAlpha(0.5 + Math.sin(Date.now() / 100) * 0.3);
-      }
+      // Frozen flash on the shape
+      const flash = 0.5 + Math.sin(Date.now() / 100) * 0.3;
+      this.shape.setAlpha(flash);
+    } else {
+      this.shape.setAlpha(1);
     }
   }
 
-  /** Get effective armor after debuffs */
+  private drawStar(g: Phaser.GameObjects.Graphics, cx: number, cy: number, r: number, points: number): void {
+    const innerR = r * 0.4;
+    for (let i = 0; i < points; i++) {
+      const outerAngle = (Math.PI * 2 * i) / points - Math.PI / 2;
+      const innerAngle = outerAngle + Math.PI / points;
+      const ox = cx + Math.cos(outerAngle) * r;
+      const oy = cy + Math.sin(outerAngle) * r;
+      g.fillCircle(ox, oy, 1);
+    }
+  }
+
   public get armor(): number {
     const reduction = this.debuffs.armorReducePercent;
     return Math.max(0, Math.round(this.baseArmor * (1 - reduction)));
   }
 
-  /** Apply slow debuff */
   public applySlow(percent: number, duration: number): void {
-    // Keep strongest slow
     if (percent > this.debuffs.slowPercent || this.debuffs.slowTimer <= 0) {
       this.debuffs.slowPercent = percent;
     }
     this.debuffs.slowTimer = Math.max(this.debuffs.slowTimer, duration);
   }
 
-  /** Apply armor reduction debuff */
   public applyArmorReduce(percent: number, duration: number): void {
     if (percent > this.debuffs.armorReducePercent || this.debuffs.armorReduceTimer <= 0) {
       this.debuffs.armorReducePercent = percent;
@@ -227,25 +255,21 @@ export class Enemy extends Phaser.GameObjects.Container {
     this.debuffs.armorReduceTimer = Math.max(this.debuffs.armorReduceTimer, duration);
   }
 
-  /** Apply DoT (damage over time) */
   public applyDot(damage: number, interval: number, duration: number): void {
     this.debuffs.dotDamage = Math.max(this.debuffs.dotDamage, damage);
     this.debuffs.dotInterval = interval;
     this.debuffs.dotTimer = Math.max(this.debuffs.dotTimer, duration);
   }
 
-  /** Apply stun */
   public applyStun(duration: number): void {
     this.debuffs.stunTimer = Math.max(this.debuffs.stunTimer, duration);
   }
 
-  /** Apply freeze (from special mythic periodic) */
   public applyFreeze(duration: number): void {
     this.debuffs.freezeTimer = duration;
     this.debuffs.stunTimer = Math.max(this.debuffs.stunTimer, duration);
   }
 
-  /** Is this enemy currently stunned/frozen? */
   public isStunned(): boolean {
     return this.debuffs.stunTimer > 0 || this.debuffs.freezeTimer > 0;
   }
@@ -256,7 +280,6 @@ export class Enemy extends Phaser.GameObjects.Container {
 
     this.drawHpBar();
 
-    // Hit flash
     if (this.shape && this.active) {
       this.scene?.tweens.add({
         targets: this.shape,
@@ -275,7 +298,6 @@ export class Enemy extends Phaser.GameObjects.Container {
   }
 
   public updateDebuffs(deltaSec: number): void {
-    // Slow
     if (this.debuffs.slowTimer > 0) {
       this.debuffs.slowTimer -= deltaSec;
       if (this.debuffs.slowTimer <= 0) {
@@ -284,7 +306,6 @@ export class Enemy extends Phaser.GameObjects.Container {
       }
     }
 
-    // Armor reduce
     if (this.debuffs.armorReduceTimer > 0) {
       this.debuffs.armorReduceTimer -= deltaSec;
       if (this.debuffs.armorReduceTimer <= 0) {
@@ -293,12 +314,13 @@ export class Enemy extends Phaser.GameObjects.Container {
       }
     }
 
-    // DoT
     if (this.debuffs.dotTimer > 0) {
       this.debuffs.dotAccum += deltaSec;
       if (this.debuffs.dotAccum >= this.debuffs.dotInterval) {
         this.debuffs.dotAccum -= this.debuffs.dotInterval;
         this.takeDamage(this.debuffs.dotDamage);
+        // Green poison particle
+        this.spawnDotParticle();
       }
       this.debuffs.dotTimer -= deltaSec;
       if (this.debuffs.dotTimer <= 0) {
@@ -308,27 +330,48 @@ export class Enemy extends Phaser.GameObjects.Container {
       }
     }
 
-    // Stun
     if (this.debuffs.stunTimer > 0) {
       this.debuffs.stunTimer -= deltaSec;
     }
 
-    // Freeze
     if (this.debuffs.freezeTimer > 0) {
       this.debuffs.freezeTimer -= deltaSec;
+    }
+
+    // Redraw shape when debuff state changes (color change for slow/freeze)
+    if (this.debuffs.slowTimer > 0 || this.debuffs.freezeTimer > 0) {
+      this.drawShape();
+    } else if (this.shape.alpha !== 1) {
+      this.drawShape();
     }
 
     this.drawDebuffIndicator();
   }
 
+  /** Spawn a small green particle for DoT visual */
+  private spawnDotParticle(): void {
+    if (!this.scene || !this.active) return;
+    const p = this.scene.add.graphics();
+    p.fillStyle(0x66bb6a, 0.7);
+    p.fillCircle(0, 0, 2);
+    p.setPosition(this.x + (Math.random() - 0.5) * 8, this.y);
+    p.setDepth(140);
+
+    this.scene.tweens.add({
+      targets: p,
+      y: p.y - 12,
+      alpha: 0,
+      duration: 400,
+      onComplete: () => p.destroy(),
+    });
+  }
+
   public moveAlongPath(path: Phaser.Curves.Path, delta: number): void {
     if (this.isDead || this.reachedEnd) return;
 
-    // Update debuffs
     const deltaSec = delta / 1000;
     this.updateDebuffs(deltaSec);
 
-    // If stunned, don't move
     if (this.isStunned()) return;
 
     const pathLength = path.getLength();
