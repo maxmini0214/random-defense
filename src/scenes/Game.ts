@@ -538,6 +538,7 @@ export class GameScene extends Phaser.Scene {
   // ---- HUD ----
 
   private updateHUD(): void {
+    if (!this.hud || !this.economy || !this.waveManager || !this.actionBar) return;
     this.hud.updateGold(this.economy.gold);
     this.hud.updateLives(this.lives);
     this.hud.updateWave(this.waveManager.currentWave, this.waveManager.getTotalWaves());
