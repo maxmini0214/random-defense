@@ -2,7 +2,9 @@ import Phaser from 'phaser';
 import configData from '../data/config.json';
 import { UnitGrade } from '../entities/Unit';
 import { ScoreManager } from '../systems/ScoreManager';
+import { RankingService, RankingEntry } from '../systems/RankingService';
 import { soundManager } from '../systems/SoundManager';
+import { NicknamePopup } from '../ui/NicknamePopup';
 
 interface GameOverData {
   wave?: number;
@@ -28,7 +30,7 @@ export class GameOverScene extends Phaser.Scene {
     vignette.fillRect(0, 0, width, height);
 
     // Title
-    const title = this.add.text(width / 2, height * 0.2, '💀 게임 오버', {
+    const title = this.add.text(width / 2, height * 0.12, '💀 게임 오버', {
       fontSize: '32px',
       color: '#ef5350',
       fontStyle: 'bold',
@@ -46,9 +48,9 @@ export class GameOverScene extends Phaser.Scene {
     });
 
     // Stats panel
-    const panelY = height * 0.30;
+    const panelY = height * 0.20;
     const panelW = width - 60;
-    const panelH = 210;
+    const panelH = 180;
     const panelX = 30;
 
     const panel = this.add.graphics();
@@ -58,26 +60,26 @@ export class GameOverScene extends Phaser.Scene {
     panel.strokeRoundedRect(panelX, panelY, panelW, panelH, 12);
 
     const statsX = panelX + 20;
-    let statsY = panelY + 20;
-    const lineHeight = 28;
+    let statsY = panelY + 16;
+    const lineHeight = 26;
 
     if (data.wave) {
       this.add.text(statsX, statsY, `🌊 도달 웨이브: ${data.wave} / ${configData.wave.totalWaves}`, {
-        fontSize: '15px', color: '#42a5f5', fontStyle: 'bold',
+        fontSize: '14px', color: '#42a5f5', fontStyle: 'bold',
       });
       statsY += lineHeight;
     }
 
     if (data.kills !== undefined) {
       this.add.text(statsX, statsY, `⚔️ 처치 수: ${data.kills}`, {
-        fontSize: '15px', color: '#66bb6a', fontStyle: 'bold',
+        fontSize: '14px', color: '#66bb6a', fontStyle: 'bold',
       });
       statsY += lineHeight;
     }
 
     if (data.score !== undefined) {
       this.add.text(statsX, statsY, `🏅 점수: ${data.score}`, {
-        fontSize: '15px', color: '#ffd54f', fontStyle: 'bold',
+        fontSize: '14px', color: '#ffd54f', fontStyle: 'bold',
       });
       statsY += lineHeight;
     }
@@ -89,7 +91,7 @@ export class GameOverScene extends Phaser.Scene {
       };
       const gradeColor = (configData.colors.grade as Record<string, string>)[data.highestGrade];
       this.add.text(statsX, statsY, `👑 최고 등급: ${gradeNames[data.highestGrade]}`, {
-        fontSize: '15px', color: gradeColor, fontStyle: 'bold',
+        fontSize: '14px', color: gradeColor, fontStyle: 'bold',
       });
       statsY += lineHeight;
     }
@@ -98,7 +100,7 @@ export class GameOverScene extends Phaser.Scene {
       const mins = Math.floor(data.playTime / 60);
       const secs = data.playTime % 60;
       this.add.text(statsX, statsY, `⏱️ 플레이 시간: ${mins}분 ${secs}초`, {
-        fontSize: '15px', color: '#fafafa',
+        fontSize: '14px', color: '#fafafa',
       });
       statsY += lineHeight;
     }
@@ -107,17 +109,78 @@ export class GameOverScene extends Phaser.Scene {
     const record = ScoreManager.getBestRecord();
     if (record.bestWave > 0) {
       this.add.text(statsX, statsY, `🏆 최고 기록: W${record.bestWave} / ${record.bestScore}점`, {
-        fontSize: '13px', color: '#ffd54f',
+        fontSize: '12px', color: '#ffd54f',
       });
     }
 
-    // Tip text
-    this.add.text(width / 2, panelY + panelH + 15, '💡 합성으로 상위 등급을 만들어 보세요!', {
-      fontSize: '12px', color: '#888888',
-    }).setOrigin(0.5);
+    // Show nickname popup for ranking
+    if (data.score && data.score > 0) {
+      this.time.delayedCall(600, () => {
+        new NicknamePopup(this, async (result) => {
+          // Submit to ranking
+          await RankingService.submitScore({
+            nickname: result.nickname,
+            score: data.score!,
+            wave: data.wave || 0,
+          });
 
+          // Show nearby rankings
+          this.showNearbyRankings(data.score!, panelY + panelH + 10);
+        });
+      });
+    }
+
+    // Buttons (positioned lower to make room for rankings)
+    this.createButtons(width, height, panelY + panelH);
+  }
+
+  private async showNearbyRankings(score: number, startY: number): Promise<void> {
+    const { width } = this.cameras.main;
+
+    try {
+      const { rank, entries } = await RankingService.getNearbyRankings(score);
+
+      const rankPanelX = 30;
+      const rankPanelW = width - 60;
+      const rankPanelH = Math.min(entries.length * 24 + 44, 170);
+
+      const bg = this.add.graphics();
+      bg.fillStyle(0x2d2d44, 0.85);
+      bg.fillRoundedRect(rankPanelX, startY, rankPanelW, rankPanelH, 10);
+      bg.lineStyle(1, 0xffd54f, 0.3);
+      bg.strokeRoundedRect(rankPanelX, startY, rankPanelW, rankPanelH, 10);
+
+      this.add.text(width / 2, startY + 14, `📊 내 순위: ${rank}위`, {
+        fontSize: '13px',
+        color: '#ffd54f',
+        fontStyle: 'bold',
+      }).setOrigin(0.5);
+
+      const myNickname = RankingService.getSavedNickname();
+      let y = startY + 34;
+
+      for (const entry of entries) {
+        const isMe = entry.nickname === myNickname && entry.rank === rank;
+        const color = isMe ? '#42a5f5' : '#cccccc';
+        const prefix = isMe ? '▶ ' : '  ';
+
+        this.add.text(rankPanelX + 14, y, `${prefix}${entry.rank}. ${entry.nickname}`, {
+          fontSize: '11px', color, fontStyle: isMe ? 'bold' : 'normal',
+        });
+        this.add.text(rankPanelX + rankPanelW - 14, y, `${entry.score}`, {
+          fontSize: '11px', color: '#ffd54f',
+        }).setOrigin(1, 0);
+
+        y += 22;
+      }
+    } catch {
+      // Silently fail - rankings are optional
+    }
+  }
+
+  private createButtons(width: number, height: number, _panelBottom: number): void {
     // Restart button
-    const btnY = panelY + panelH + 50;
+    const btnY = height * 0.78;
     const btnW = 180;
     const btnH = 48;
     const btnX = width / 2 - btnW / 2;

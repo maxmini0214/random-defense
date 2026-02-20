@@ -19,6 +19,9 @@ const config: Phaser.Types.Core.GameConfig = {
   input: {
     activePointers: 2,
   },
+  dom: {
+    createContainer: true,
+  },
   render: {
     pixelArt: false,
     antialias: true,
@@ -26,6 +29,7 @@ const config: Phaser.Types.Core.GameConfig = {
 };
 
 const game = new Phaser.Game(config);
+(window as any).__GAME__ = game;
 
 // Responsive resize handler
 function handleResize(): void {

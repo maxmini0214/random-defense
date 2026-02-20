@@ -1,8 +1,11 @@
 import Phaser from 'phaser';
 import { soundManager } from '../systems/SoundManager';
 import { ScoreManager, GameRecord } from '../systems/ScoreManager';
+import { RankingBoard } from '../ui/RankingBoard';
 
 export class BootScene extends Phaser.Scene {
+  private rankingBoard: RankingBoard | null = null;
+
   constructor() {
     super({ key: 'Boot' });
   }
@@ -21,7 +24,7 @@ export class BootScene extends Phaser.Scene {
     this.spawnMenuParticles(width, height);
 
     // ---- Title ----
-    const titleY = height * 0.22;
+    const titleY = height * 0.18;
     const diceEmoji = this.add.text(width / 2, titleY - 50, '🎲', {
       fontSize: '48px',
     }).setOrigin(0.5);
@@ -64,7 +67,7 @@ export class BootScene extends Phaser.Scene {
     // ---- Best Record ----
     const record: GameRecord = ScoreManager.getBestRecord();
     if (record.bestWave > 0) {
-      const recordY = titleY + 80;
+      const recordY = titleY + 76;
       this.add.text(width / 2, recordY, '🏆 최고 기록', {
         fontSize: '13px',
         color: '#ffd54f',
@@ -78,7 +81,7 @@ export class BootScene extends Phaser.Scene {
     }
 
     // ---- Start Button ----
-    const startY = height * 0.55;
+    const startY = height * 0.46;
     this.createMenuButton(width / 2, startY, '▶  게임 시작', 0x42a5f5, () => {
       soundManager.init();
       soundManager.playClick();
@@ -88,8 +91,17 @@ export class BootScene extends Phaser.Scene {
       });
     });
 
+    // ---- Ranking Button ----
+    const rankingY = height * 0.57;
+    this.rankingBoard = new RankingBoard(this);
+    this.createMenuButton(width / 2, rankingY, '🏆  온라인 랭킹', 0xffd54f, () => {
+      soundManager.init();
+      soundManager.playClick();
+      this.rankingBoard?.show();
+    }, 170, 44);
+
     // ---- Sound Toggle ----
-    const soundY = height * 0.67;
+    const soundY = height * 0.68;
     const soundLabel = soundManager.muted ? '🔇 사운드 OFF' : '🔊 사운드 ON';
     const soundText = this.add.text(width / 2, soundY, soundLabel, {
       fontSize: '14px',
@@ -131,18 +143,16 @@ export class BootScene extends Phaser.Scene {
     });
 
     // ---- Version ----
-    this.add.text(width / 2, height - 20, 'v1.0', {
+    this.add.text(width / 2, height - 20, 'v1.1', {
       fontSize: '10px',
       color: '#555555',
     }).setOrigin(0.5);
   }
 
   private createMenuButton(
-    x: number, y: number, label: string, color: number, onClick: () => void
+    x: number, y: number, label: string, color: number, onClick: () => void,
+    btnW: number = 200, btnH: number = 52,
   ): void {
-    const btnW = 200;
-    const btnH = 52;
-
     const bg = this.add.graphics();
     bg.fillStyle(color, 0.85);
     bg.fillRoundedRect(x - btnW / 2, y - btnH / 2, btnW, btnH, 12);
@@ -150,7 +160,7 @@ export class BootScene extends Phaser.Scene {
     bg.strokeRoundedRect(x - btnW / 2, y - btnH / 2, btnW, btnH, 12);
 
     this.add.text(x, y, label, {
-      fontSize: '18px',
+      fontSize: btnH > 48 ? '18px' : '15px',
       color: '#fafafa',
       fontStyle: 'bold',
     }).setOrigin(0.5);

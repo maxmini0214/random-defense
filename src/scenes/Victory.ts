@@ -2,7 +2,9 @@ import Phaser from 'phaser';
 import configData from '../data/config.json';
 import { UnitGrade } from '../entities/Unit';
 import { ScoreManager } from '../systems/ScoreManager';
+import { RankingService } from '../systems/RankingService';
 import { soundManager } from '../systems/SoundManager';
+import { NicknamePopup } from '../ui/NicknamePopup';
 
 interface VictoryData {
   kills?: number;
@@ -25,7 +27,7 @@ export class VictoryScene extends Phaser.Scene {
     this.spawnCelebrationParticles(width, height);
 
     // Title with bounce animation
-    const title = this.add.text(width / 2, height * 0.15, '🎉 승리! 🎉', {
+    const title = this.add.text(width / 2, height * 0.10, '🎉 승리! 🎉', {
       fontSize: '36px',
       color: '#ffd54f',
       fontStyle: 'bold',
@@ -50,15 +52,15 @@ export class VictoryScene extends Phaser.Scene {
       },
     });
 
-    this.add.text(width / 2, height * 0.23, '모든 웨이브를 클리어했습니다!', {
-      fontSize: '14px',
+    this.add.text(width / 2, height * 0.17, '모든 웨이브를 클리어했습니다!', {
+      fontSize: '13px',
       color: '#fafafa',
     }).setOrigin(0.5).setDepth(10);
 
     // Stats panel
-    const panelY = height * 0.3;
+    const panelY = height * 0.22;
     const panelW = width - 60;
-    const panelH = 180;
+    const panelH = 160;
     const panelX = 30;
 
     const panel = this.add.graphics();
@@ -69,19 +71,19 @@ export class VictoryScene extends Phaser.Scene {
     panel.setDepth(10);
 
     const statsX = panelX + 20;
-    let statsY = panelY + 20;
-    const lineHeight = 30;
+    let statsY = panelY + 16;
+    const lineHeight = 26;
 
     if (data.kills !== undefined) {
       this.add.text(statsX, statsY, `⚔️ 총 처치 수: ${data.kills}`, {
-        fontSize: '16px', color: '#66bb6a', fontStyle: 'bold',
+        fontSize: '14px', color: '#66bb6a', fontStyle: 'bold',
       }).setDepth(10);
       statsY += lineHeight;
     }
 
     if (data.score !== undefined) {
       this.add.text(statsX, statsY, `🏅 최종 점수: ${data.score}`, {
-        fontSize: '16px', color: '#ffd54f', fontStyle: 'bold',
+        fontSize: '14px', color: '#ffd54f', fontStyle: 'bold',
       }).setDepth(10);
       statsY += lineHeight;
     }
@@ -93,7 +95,7 @@ export class VictoryScene extends Phaser.Scene {
       };
       const gradeColor = (configData.colors.grade as Record<string, string>)[data.highestGrade];
       this.add.text(statsX, statsY, `👑 최고 등급: ${gradeNames[data.highestGrade]}`, {
-        fontSize: '16px', color: gradeColor, fontStyle: 'bold',
+        fontSize: '14px', color: gradeColor, fontStyle: 'bold',
       }).setDepth(10);
       statsY += lineHeight;
     }
@@ -102,25 +104,95 @@ export class VictoryScene extends Phaser.Scene {
       const mins = Math.floor(data.playTime / 60);
       const secs = data.playTime % 60;
       this.add.text(statsX, statsY, `⏱️ 플레이 시간: ${mins}분 ${secs}초`, {
-        fontSize: '16px', color: '#fafafa',
+        fontSize: '14px', color: '#fafafa',
       }).setDepth(10);
       statsY += lineHeight;
     }
 
     this.add.text(statsX, statsY, `🌊 25/25 웨이브 완료`, {
-      fontSize: '16px', color: '#42a5f5', fontStyle: 'bold',
+      fontSize: '14px', color: '#42a5f5', fontStyle: 'bold',
     }).setDepth(10);
 
     // Best record
     const record = ScoreManager.getBestRecord();
     if (record.bestScore > 0) {
-      this.add.text(width / 2, panelY + panelH + 12, `🏆 최고 기록: ${record.bestScore}점`, {
-        fontSize: '13px', color: '#ffd54f',
+      this.add.text(width / 2, panelY + panelH + 8, `🏆 최고 기록: ${record.bestScore}점`, {
+        fontSize: '12px', color: '#ffd54f',
       }).setOrigin(0.5).setDepth(10);
     }
 
-    // Restart button
-    const btnY = panelY + panelH + 40;
+    // Show nickname popup for ranking
+    if (data.score && data.score > 0) {
+      this.time.delayedCall(600, () => {
+        new NicknamePopup(this, async (result) => {
+          await RankingService.submitScore({
+            nickname: result.nickname,
+            score: data.score!,
+            wave: 25,
+          });
+
+          // Show nearby rankings
+          this.showNearbyRankings(data.score!, panelY + panelH + 26);
+        });
+      });
+    }
+
+    // Buttons
+    this.createButtons(width, height);
+
+    // Continuous celebration
+    this.time.addEvent({
+      delay: 800,
+      callback: () => this.spawnCelebrationParticles(width, height),
+      loop: true,
+    });
+  }
+
+  private async showNearbyRankings(score: number, startY: number): Promise<void> {
+    const { width } = this.cameras.main;
+
+    try {
+      const { rank, entries } = await RankingService.getNearbyRankings(score);
+
+      const rankPanelX = 30;
+      const rankPanelW = width - 60;
+      const rankPanelH = Math.min(entries.length * 24 + 44, 170);
+
+      const bg = this.add.graphics();
+      bg.fillStyle(0x2d2d44, 0.85);
+      bg.fillRoundedRect(rankPanelX, startY, rankPanelW, rankPanelH, 10);
+      bg.lineStyle(1, 0xffd54f, 0.3);
+      bg.strokeRoundedRect(rankPanelX, startY, rankPanelW, rankPanelH, 10);
+      bg.setDepth(10);
+
+      this.add.text(width / 2, startY + 14, `📊 내 순위: ${rank}위`, {
+        fontSize: '13px', color: '#ffd54f', fontStyle: 'bold',
+      }).setOrigin(0.5).setDepth(10);
+
+      const myNickname = RankingService.getSavedNickname();
+      let y = startY + 34;
+
+      for (const entry of entries) {
+        const isMe = entry.nickname === myNickname && entry.rank === rank;
+        const color = isMe ? '#42a5f5' : '#cccccc';
+        const prefix = isMe ? '▶ ' : '  ';
+
+        this.add.text(rankPanelX + 14, y, `${prefix}${entry.rank}. ${entry.nickname}`, {
+          fontSize: '11px', color, fontStyle: isMe ? 'bold' : 'normal',
+        }).setDepth(10);
+        this.add.text(rankPanelX + rankPanelW - 14, y, `${entry.score}`, {
+          fontSize: '11px', color: '#ffd54f',
+        }).setOrigin(1, 0).setDepth(10);
+
+        y += 22;
+      }
+    } catch {
+      // Silently fail
+    }
+  }
+
+  private createButtons(width: number, height: number): void {
+    const btnY = height * 0.78;
     const btnW = 180;
     const btnH = 48;
     const btnX = width / 2 - btnW / 2;
@@ -147,7 +219,6 @@ export class VictoryScene extends Phaser.Scene {
       this.scene.start('Game');
     });
 
-    // Menu button
     const menuBtnY = btnY + btnH + 12;
     const menuText = this.add.text(width / 2, menuBtnY, '🏠 메인 메뉴', {
       fontSize: '14px', color: '#888888',
@@ -156,13 +227,6 @@ export class VictoryScene extends Phaser.Scene {
     menuText.on('pointerup', () => {
       soundManager.playClick();
       this.scene.start('Boot');
-    });
-
-    // Continuous celebration
-    this.time.addEvent({
-      delay: 800,
-      callback: () => this.spawnCelebrationParticles(width, height),
-      loop: true,
     });
   }
 

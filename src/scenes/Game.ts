@@ -93,7 +93,6 @@ export class GameScene extends Phaser.Scene {
 
     // HUD
     this.hud = new HUD(this, width);
-    this.updateHUD();
 
     // Action bar
     this.actionBar = new ActionBar(this, 0, height - actionBarHeight - 4, width, {
@@ -101,13 +100,16 @@ export class GameScene extends Phaser.Scene {
       onSkip: () => this.handleSkip(),
     });
 
-    // Wave manager
+    // Wave manager (must be before updateHUD!)
     this.waveManager = new WaveManager(this, this.path, {
       onWaveClear: (reward) => this.handleWaveClear(reward),
       onEnemyReachEnd: (enemy) => this.handleEnemyReachEnd(enemy),
       onEnemyKilled: (enemy) => this.handleEnemyKilled(enemy),
       onWaveStart: (waveNum) => this.handleWaveStart(waveNum),
     });
+
+    // Initial HUD update (after waveManager is ready)
+    this.updateHUD();
 
     // Economy change callback
     this.economy.onChange(() => this.updateHUD());
