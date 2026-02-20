@@ -36,6 +36,7 @@ export class GameScene extends Phaser.Scene {
   private dragGhost: Phaser.GameObjects.Container | null = null;
   private lastHighlightedSlot: number = -1;
   private isDragging: boolean = false;
+  private dragRangeCircle: Phaser.GameObjects.Graphics | null = null;
 
   // Unit info popup
   private infoPopup: Phaser.GameObjects.Container | null = null;
@@ -387,6 +388,7 @@ export class GameScene extends Phaser.Scene {
 
       this.dragUnit.setPosition(pointer.x, pointer.y);
       this.dragUnit.setDepth(200);
+      this.updateRangeCircle(pointer.x, pointer.y);
       this.updateDragHighlights(pointer.x, pointer.y);
     });
 
@@ -398,6 +400,10 @@ export class GameScene extends Phaser.Scene {
         this.showInfoPopup(this.dragUnit);
         this.dragUnit = null;
         this.dragOriginalSlot = -1;
+        if (this.dragRangeCircle) {
+          this.dragRangeCircle.destroy();
+          this.dragRangeCircle = null;
+        }
         return;
       }
 
@@ -411,6 +417,34 @@ export class GameScene extends Phaser.Scene {
     this.dragUnit.setAlpha(0.7);
     this.dragUnit.setDepth(200);
     this.actionBar.highlightSellZone(false);
+
+    // Show all valid drop slots
+    for (let i = 0; i < configData.slots.total; i++) {
+      if (i === this.dragOriginalSlot) continue;
+      const targetUnit = this.unitSlots.getUnitAtSlot(i);
+      if (!targetUnit) {
+        this.unitSlots.highlightSlotDrop(i, 'empty');
+      } else if (MergeSystem.canMerge(this.dragUnit.grade, targetUnit.grade)) {
+        this.unitSlots.highlightSlotDrop(i, 'merge');
+      }
+    }
+
+    // Create range circle
+    this.dragRangeCircle = this.add.graphics();
+    this.dragRangeCircle.setDepth(199);
+    this.updateRangeCircle(this.dragUnit.x, this.dragUnit.y);
+  }
+
+  private updateRangeCircle(x: number, y: number): void {
+    if (!this.dragRangeCircle || !this.dragUnit) return;
+    this.dragRangeCircle.clear();
+    const range = this.dragUnit.stats.range;
+    // Fill
+    this.dragRangeCircle.fillStyle(0x42a5f5, 0.08);
+    this.dragRangeCircle.fillCircle(x, y, range);
+    // Border
+    this.dragRangeCircle.lineStyle(1.5, 0x42a5f5, 0.35);
+    this.dragRangeCircle.strokeCircle(x, y, range);
   }
 
   private updateDragHighlights(px: number, py: number): void {
@@ -457,6 +491,12 @@ export class GameScene extends Phaser.Scene {
     this.actionBar.highlightSellZone(false);
     this.unitSlots.resetAllSlotHighlights();
     this.lastHighlightedSlot = -1;
+
+    // Remove range circle
+    if (this.dragRangeCircle) {
+      this.dragRangeCircle.destroy();
+      this.dragRangeCircle = null;
+    }
 
     if (this.actionBar.isOverSellZone(px, py)) {
       this.sellUnit(fromSlot);
