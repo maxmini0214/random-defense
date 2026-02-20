@@ -129,6 +129,7 @@ export class VictoryScene extends Phaser.Scene {
             nickname: result.nickname,
             score: data.score!,
             wave: 25,
+            playTime: data.playTime || 0,
           });
 
           // Show nearby rankings

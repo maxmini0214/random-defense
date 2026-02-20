@@ -7,6 +7,7 @@ export interface RankingEntry {
   nickname: string;
   score: number;
   wave: number;
+  playTime: number; // seconds
   date: string; // ISO string
   id?: string;  // Firebase key
 }
@@ -88,12 +89,13 @@ export class RankingService {
           nickname: v.nickname || 'Player',
           score: v.score || 0,
           wave: v.wave || 0,
+          playTime: v.playTime || 0,
           date: v.date || '',
         };
       });
 
-      // Sort descending by score
-      entries.sort((a, b) => b.score - a.score);
+      // Sort: score descending, then playTime ascending (faster = better)
+      entries.sort((a, b) => b.score - a.score || (a.playTime || 9999) - (b.playTime || 9999));
 
       this.cache = entries;
       this.cacheTime = Date.now();
@@ -173,7 +175,7 @@ export class RankingService {
     try {
       const existing = this.getLocalRankings(MAX_ENTRIES);
       existing.push({ ...entry, id: `local_${Date.now()}` });
-      existing.sort((a, b) => b.score - a.score);
+      existing.sort((a, b) => b.score - a.score || (a.playTime || 9999) - (b.playTime || 9999));
       const trimmed = existing.slice(0, MAX_ENTRIES);
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(trimmed));
     } catch { /* ignore */ }
@@ -184,7 +186,7 @@ export class RankingService {
       const data = localStorage.getItem(LOCAL_STORAGE_KEY);
       if (!data) return [];
       const parsed: RankingEntry[] = JSON.parse(data);
-      return parsed.sort((a, b) => b.score - a.score).slice(0, limit);
+      return parsed.sort((a, b) => b.score - a.score || (a.playTime || 9999) - (b.playTime || 9999)).slice(0, limit);
     } catch {
       return [];
     }

@@ -122,6 +122,7 @@ export class GameOverScene extends Phaser.Scene {
             nickname: result.nickname,
             score: data.score!,
             wave: data.wave || 0,
+            playTime: data.playTime || 0,
           });
 
           // Show nearby rankings

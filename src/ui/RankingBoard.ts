@@ -92,15 +92,17 @@ export class RankingBoard {
 
       // Header
       const headerY = panelY + 50;
-      const colRank = panelX + 16;
-      const colName = panelX + 46;
-      const colScore = panelX + panelW - 46;
-      const colWave = panelX + panelW - 100;
+      const colRank = panelX + 14;
+      const colName = panelX + 40;
+      const colWave = panelX + panelW - 140;
+      const colTime = panelX + panelW - 86;
+      const colScore = panelX + panelW - 16;
 
       const headerStyle = { fontSize: '10px', color: '#888888' };
       this.container.add(this.scene.add.text(colRank, headerY, '#', headerStyle));
       this.container.add(this.scene.add.text(colName, headerY, '닉네임', headerStyle));
       this.container.add(this.scene.add.text(colWave, headerY, '웨이브', headerStyle));
+      this.container.add(this.scene.add.text(colTime, headerY, '시간', headerStyle));
       this.container.add(this.scene.add.text(colScore, headerY, '점수', { ...headerStyle }).setOrigin(1, 0));
 
       // Separator
@@ -152,6 +154,9 @@ export class RankingBoard {
           this.scene.add.text(colWave, y, `W${entry.wave}`, { fontSize: '11px', color: '#42a5f5' }).setAlpha(alpha)
         );
         this.container.add(
+          this.scene.add.text(colTime, y, this.formatTime(entry.playTime || 0), { fontSize: '11px', color: '#aaaaaa' }).setAlpha(alpha)
+        );
+        this.container.add(
           this.scene.add.text(colScore, y, `${entry.score}`, { fontSize: '12px', color: '#ffd54f', fontStyle: 'bold' }).setOrigin(1, 0).setAlpha(alpha)
         );
       });
@@ -170,5 +175,12 @@ export class RankingBoard {
   private truncate(str: string, max: number): string {
     if (str.length <= max) return str;
     return str.slice(0, max) + '…';
+  }
+
+  private formatTime(seconds: number): string {
+    if (!seconds || seconds <= 0) return '-';
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m}:${s.toString().padStart(2, '0')}`;
   }
 }
