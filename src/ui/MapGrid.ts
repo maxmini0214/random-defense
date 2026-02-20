@@ -2,331 +2,334 @@ import Phaser from 'phaser';
 import configData from '../data/config.json';
 import { Unit, UnitType, UnitGrade } from '../entities/Unit';
 
-interface Tile {
+export interface GridCell {
   col: number;
   row: number;
   blocked: boolean;
   unit: Unit | null;
 }
 
-/**
- * MapGrid — Places units directly on the map as a tile grid overlay.
- * Uses slot-index API (row * cols + col) for UnitSlots compatibility.
- */
-export class MapGrid extends Phaser.GameObjects.Container {
+export class MapGrid {
+  private scene: Phaser.Scene;
+  private cells: GridCell[][] = [];
+  private cellGraphics: Phaser.GameObjects.Graphics[][] = [];
+  private gridContainer: Phaser.GameObjects.Container;
+
   public cols: number;
   public rows: number;
-  public tileSize: number;
-  public slotSize: number;
-  public gridX: number;
-  public gridY: number;
-
-  private tiles: Tile[][] = [];
-  private tileGraphics: Phaser.GameObjects.Graphics;
+  public cellSize: number;
+  public mapX: number;
+  public mapY: number;
+  public mapW: number;
+  public mapH: number;
+  private gridOffsetX: number = 0;
+  private gridOffsetY: number = 0;
+  private availableCount: number = 0;
 
   constructor(
     scene: Phaser.Scene,
     mapX: number,
     mapY: number,
-    mapWidth: number,
-    mapHeight: number,
-    pathWaypoints: Phaser.Math.Vector2[]
+    mapW: number,
+    mapH: number,
+    path: Phaser.Curves.Path
   ) {
-    super(scene, 0, 0);
+    this.scene = scene;
+    this.mapX = mapX;
+    this.mapY = mapY;
+    this.mapW = mapW;
+    this.mapH = mapH;
 
-    const idealTileSize = 44;
-    this.cols = Math.floor(mapWidth / idealTileSize);
-    this.rows = Math.floor(mapHeight / idealTileSize);
+    this.cellSize = 48;
+    this.cols = Math.floor(mapW / this.cellSize);
+    this.rows = Math.floor(mapH / this.cellSize);
 
-    this.tileSize = Math.min(56, Math.max(40,
-      Math.floor(Math.min(mapWidth / this.cols, mapHeight / this.rows))
-    ));
+    this.gridOffsetX = mapX + (mapW - this.cols * this.cellSize) / 2;
+    this.gridOffsetY = mapY + (mapH - this.rows * this.cellSize) / 2;
 
-    this.cols = Math.floor(mapWidth / this.tileSize);
-    this.rows = Math.floor(mapHeight / this.tileSize);
-    this.slotSize = this.tileSize;
+    this.gridContainer = scene.add.container(0, 0);
+    this.gridContainer.setDepth(50);
 
-    const totalGridW = this.cols * this.tileSize;
-    const totalGridH = this.rows * this.tileSize;
-    this.gridX = mapX + (mapWidth - totalGridW) / 2;
-    this.gridY = mapY + (mapHeight - totalGridH) / 2;
-
-    for (let r = 0; r < this.rows; r++) {
-      const row: Tile[] = [];
-      for (let c = 0; c < this.cols; c++) {
-        row.push({ col: c, row: r, blocked: false, unit: null });
-      }
-      this.tiles.push(row);
-    }
-
-    this.markBlockedTiles(pathWaypoints);
-
-    this.tileGraphics = scene.add.graphics();
-    this.tileGraphics.setDepth(50);
-    this.drawAllTiles();
-
-    scene.add.existing(this);
-    this.setDepth(50);
+    this.initCells(path);
+    this.drawGrid();
   }
 
-  private markBlockedTiles(waypoints: Phaser.Math.Vector2[]): void {
-    const blockRadius = this.tileSize * 0.65;
-    for (let r = 0; r < this.rows; r++) {
-      for (let c = 0; c < this.cols; c++) {
-        const center = this.getTileCenterWorld(c, r);
-        for (let i = 0; i < waypoints.length - 1; i++) {
-          const a = waypoints[i];
-          const b = waypoints[i + 1];
-          if (this.pointToSegmentDist(center.x, center.y, a.x, a.y, b.x, b.y) < blockRadius) {
-            this.tiles[r][c].blocked = true;
+  private initCells(path: Phaser.Curves.Path): void {
+    const pathPoints: Phaser.Math.Vector2[] = [];
+    const numSamples = 500;
+    for (let i = 0; i <= numSamples; i++) {
+      const t = i / numSamples;
+      const pt = path.getPoint(t);
+      pathPoints.push(pt);
+    }
+
+    const pathHalfWidth = 16;
+
+    for (let row = 0; row < this.rows; row++) {
+      this.cells[row] = [];
+      for (let col = 0; col < this.cols; col++) {
+        const cx = this.gridOffsetX + col * this.cellSize + this.cellSize / 2;
+        const cy = this.gridOffsetY + row * this.cellSize + this.cellSize / 2;
+
+        let blocked = false;
+        for (const pt of pathPoints) {
+          const dx = Math.abs(pt.x - cx);
+          const dy = Math.abs(pt.y - cy);
+          if (dx < this.cellSize / 2 + pathHalfWidth && dy < this.cellSize / 2 + pathHalfWidth) {
+            blocked = true;
             break;
           }
         }
+
+        this.cells[row][col] = { col, row, blocked, unit: null };
+        if (!blocked) this.availableCount++;
       }
     }
   }
 
-  private pointToSegmentDist(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
-    const dx = bx - ax, dy = by - ay;
-    const lenSq = dx * dx + dy * dy;
-    if (lenSq === 0) return Math.sqrt((px - ax) ** 2 + (py - ay) ** 2);
-    const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lenSq));
-    const cx = ax + t * dx, cy = ay + t * dy;
-    return Math.sqrt((px - cx) ** 2 + (py - cy) ** 2);
+  private drawGrid(): void {
+    const uiBgColor = Phaser.Display.Color.HexStringToColor(configData.colors.ui.background).color;
+
+    for (let row = 0; row < this.rows; row++) {
+      this.cellGraphics[row] = [];
+      for (let col = 0; col < this.cols; col++) {
+        const cell = this.cells[row][col];
+        const g = this.scene.add.graphics();
+        const x = this.gridOffsetX + col * this.cellSize;
+        const y = this.gridOffsetY + row * this.cellSize;
+
+        if (!cell.blocked) {
+          g.fillStyle(uiBgColor, 0.4);
+          g.fillRoundedRect(x + 1, y + 1, this.cellSize - 2, this.cellSize - 2, 4);
+          g.lineStyle(1, 0xfafafa, 0.08);
+          g.strokeRoundedRect(x + 1, y + 1, this.cellSize - 2, this.cellSize - 2, 4);
+        }
+
+        this.gridContainer.add(g);
+        this.cellGraphics[row][col] = g;
+      }
+    }
   }
 
-  private getTileCenterWorld(col: number, row: number): { x: number; y: number } {
+  public getCellCenter(col: number, row: number): { x: number; y: number } {
     return {
-      x: this.gridX + col * this.tileSize + this.tileSize / 2,
-      y: this.gridY + row * this.tileSize + this.tileSize / 2,
+      x: this.gridOffsetX + col * this.cellSize + this.cellSize / 2,
+      y: this.gridOffsetY + row * this.cellSize + this.cellSize / 2,
     };
   }
 
-  private isValidTile(row: number, col: number): boolean {
-    return row >= 0 && row < this.rows && col >= 0 && col < this.cols;
-  }
-
-  private drawAllTiles(): void {
-    this.tileGraphics.clear();
-    for (let r = 0; r < this.rows; r++) {
-      for (let c = 0; c < this.cols; c++) {
-        const tile = this.tiles[r][c];
-        const tx = this.gridX + c * this.tileSize;
-        const ty = this.gridY + r * this.tileSize;
-        const s = this.tileSize;
-        const pad = 1;
-
-        if (tile.blocked) {
-          this.tileGraphics.fillStyle(0x000000, 0.15);
-          this.tileGraphics.fillRect(tx + pad, ty + pad, s - pad * 2, s - pad * 2);
-        } else if (tile.unit) {
-          const gradeColor = Phaser.Display.Color.HexStringToColor(
-            (configData.colors.grade as Record<string, string>)[tile.unit.grade]
-          ).color;
-          this.tileGraphics.fillStyle(0x2d2d44, 0.3);
-          this.tileGraphics.fillRoundedRect(tx + pad, ty + pad, s - pad * 2, s - pad * 2, 4);
-          this.tileGraphics.lineStyle(1.5, gradeColor, 0.5);
-          this.tileGraphics.strokeRoundedRect(tx + pad, ty + pad, s - pad * 2, s - pad * 2, 4);
-        } else {
-          this.tileGraphics.fillStyle(0x2d2d44, 0.15);
-          this.tileGraphics.fillRoundedRect(tx + pad, ty + pad, s - pad * 2, s - pad * 2, 4);
-          this.tileGraphics.lineStyle(1, 0xfafafa, 0.08);
-          this.tileGraphics.strokeRoundedRect(tx + pad, ty + pad, s - pad * 2, s - pad * 2, 4);
-        }
-      }
-    }
-  }
-
-  public getSlotCenter(index: number): { x: number; y: number } {
-    const row = Math.floor(index / this.cols);
-    const col = index % this.cols;
-    return this.getTileCenterWorld(col, row);
-  }
-
-  public getSlotTopLeft(index: number): { x: number; y: number } {
-    const row = Math.floor(index / this.cols);
-    const col = index % this.cols;
+  public getCellTopLeft(col: number, row: number): { x: number; y: number } {
     return {
-      x: this.gridX + col * this.tileSize,
-      y: this.gridY + row * this.tileSize,
+      x: this.gridOffsetX + col * this.cellSize,
+      y: this.gridOffsetY + row * this.cellSize,
     };
   }
 
-  public getSlotAtPosition(sceneX: number, sceneY: number): number {
-    const touchPadding = 4;
-    let closestSlot = -1;
-    let closestDist = Infinity;
+  public getCellAtPosition(sceneX: number, sceneY: number): { col: number; row: number } | null {
+    const col = Math.floor((sceneX - this.gridOffsetX) / this.cellSize);
+    const row = Math.floor((sceneY - this.gridOffsetY) / this.cellSize);
 
-    for (let r = 0; r < this.rows; r++) {
-      for (let c = 0; c < this.cols; c++) {
-        if (this.tiles[r][c].blocked) continue;
-        const center = this.getTileCenterWorld(c, r);
-        const halfSize = this.tileSize / 2 + touchPadding;
-        if (Math.abs(sceneX - center.x) <= halfSize && Math.abs(sceneY - center.y) <= halfSize) {
-          const dx = sceneX - center.x, dy = sceneY - center.y;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          if (dist < closestDist) {
-            closestSlot = r * this.cols + c;
-            closestDist = dist;
-          }
+    if (col < 0 || col >= this.cols || row < 0 || row >= this.rows) return null;
+    if (this.cells[row][col].blocked) return null;
+
+    return { col, row };
+  }
+
+  public findEmptyCell(): { col: number; row: number } | null {
+    const empty: { col: number; row: number }[] = [];
+    for (let row = 0; row < this.rows; row++) {
+      for (let col = 0; col < this.cols; col++) {
+        if (!this.cells[row][col].blocked && this.cells[row][col].unit === null) {
+          empty.push({ col, row });
         }
       }
     }
-    return closestSlot;
+    if (empty.length === 0) return null;
+    return empty[Math.floor(Math.random() * empty.length)];
   }
 
-  public findEmptySlot(): number {
-    const empties: number[] = [];
-    for (let r = 0; r < this.rows; r++) {
-      for (let c = 0; c < this.cols; c++) {
-        if (!this.tiles[r][c].blocked && !this.tiles[r][c].unit) {
-          empties.push(r * this.cols + c);
-        }
-      }
-    }
-    if (empties.length === 0) return -1;
-    return empties[Math.floor(Math.random() * empties.length)];
-  }
+  public placeUnit(
+    unitType: UnitType,
+    grade: UnitGrade,
+    col: number,
+    row: number
+  ): Unit | null {
+    if (row < 0 || row >= this.rows || col < 0 || col >= this.cols) return null;
+    const cell = this.cells[row][col];
+    if (cell.blocked || cell.unit !== null) return null;
 
-  public placeUnit(unitType: UnitType, grade: UnitGrade, slotIndex: number): Unit | null {
-    const row = Math.floor(slotIndex / this.cols);
-    const col = slotIndex % this.cols;
-    if (!this.isValidTile(row, col)) return null;
-    const tile = this.tiles[row][col];
-    if (tile.blocked || tile.unit) return null;
-
-    const center = this.getTileCenterWorld(col, row);
+    const center = this.getCellCenter(col, row);
+    const slotIndex = row * this.cols + col;
     const unit = new Unit(this.scene, center.x, center.y, unitType, grade, slotIndex);
     unit.gridCol = col;
     unit.gridRow = row;
     unit.setDepth(101);
+    cell.unit = unit;
 
-    tile.unit = unit;
-    this.drawAllTiles();
+    this.highlightCellUnit(col, row, grade);
+
     return unit;
   }
 
-  public removeUnit(slotIndex: number): Unit | null {
-    const row = Math.floor(slotIndex / this.cols);
-    const col = slotIndex % this.cols;
-    if (!this.isValidTile(row, col)) return null;
-    const tile = this.tiles[row][col];
-    const unit = tile.unit;
-    if (!unit) return null;
+  public removeUnit(col: number, row: number): Unit | null {
+    const cell = this.cells[row]?.[col];
+    if (!cell || !cell.unit) return null;
 
-    tile.unit = null;
-    this.drawAllTiles();
+    const unit = cell.unit;
+    cell.unit = null;
+    this.resetCellHighlight(col, row);
     return unit;
   }
 
-  public moveUnit(fromSlot: number, toSlot: number): void {
-    const fromRow = Math.floor(fromSlot / this.cols);
-    const fromCol = fromSlot % this.cols;
-    const toRow = Math.floor(toSlot / this.cols);
-    const toCol = toSlot % this.cols;
+  public moveUnit(fromCol: number, fromRow: number, toCol: number, toRow: number): void {
+    const cellA = this.cells[fromRow][fromCol];
+    const cellB = this.cells[toRow][toCol];
 
-    const fromTile = this.tiles[fromRow][fromCol];
-    const toTile = this.tiles[toRow][toCol];
+    const unitA = cellA.unit;
+    const unitB = cellB.unit;
 
-    const unitA = fromTile.unit;
-    const unitB = toTile.unit;
-
-    fromTile.unit = unitB;
-    toTile.unit = unitA;
+    cellA.unit = unitB;
+    cellB.unit = unitA;
 
     if (unitA) {
-      unitA.slotIndex = toSlot;
       unitA.gridCol = toCol;
       unitA.gridRow = toRow;
-      const center = this.getTileCenterWorld(toCol, toRow);
+      unitA.slotIndex = toRow * this.cols + toCol;
+      const center = this.getCellCenter(toCol, toRow);
       unitA.setPosition(center.x, center.y);
+      this.highlightCellUnit(toCol, toRow, unitA.grade);
+    } else {
+      this.resetCellHighlight(toCol, toRow);
     }
 
     if (unitB) {
-      unitB.slotIndex = fromSlot;
       unitB.gridCol = fromCol;
       unitB.gridRow = fromRow;
-      const center = this.getTileCenterWorld(fromCol, fromRow);
+      unitB.slotIndex = fromRow * this.cols + fromCol;
+      const center = this.getCellCenter(fromCol, fromRow);
       unitB.setPosition(center.x, center.y);
+      this.highlightCellUnit(fromCol, fromRow, unitB.grade);
+    } else {
+      this.resetCellHighlight(fromCol, fromRow);
     }
-
-    this.drawAllTiles();
   }
 
-  public isFull(): boolean {
-    return this.findEmptySlot() === -1;
+  public highlightCellDrop(col: number, row: number, type: 'empty' | 'merge' | 'invalid'): void {
+    const g = this.cellGraphics[row]?.[col];
+    if (!g) return;
+    const x = this.gridOffsetX + col * this.cellSize;
+    const y = this.gridOffsetY + row * this.cellSize;
+
+    g.clear();
+
+    let borderColor: number;
+    let bgAlpha: number;
+    switch (type) {
+      case 'empty':
+        borderColor = 0x66bb6a;
+        bgAlpha = 0.35;
+        break;
+      case 'merge':
+        borderColor = 0xffd54f;
+        bgAlpha = 0.45;
+        break;
+      case 'invalid':
+      default:
+        borderColor = 0xef5350;
+        bgAlpha = 0.25;
+        break;
+    }
+
+    g.fillStyle(Phaser.Display.Color.HexStringToColor(configData.colors.ui.background).color, bgAlpha);
+    g.fillRoundedRect(x + 1, y + 1, this.cellSize - 2, this.cellSize - 2, 4);
+    g.lineStyle(2, borderColor, 0.85);
+    g.strokeRoundedRect(x + 1, y + 1, this.cellSize - 2, this.cellSize - 2, 4);
+  }
+
+  public highlightCellUnit(col: number, row: number, grade: UnitGrade): void {
+    const g = this.cellGraphics[row]?.[col];
+    if (!g) return;
+    const x = this.gridOffsetX + col * this.cellSize;
+    const y = this.gridOffsetY + row * this.cellSize;
+
+    const gradeColor = Phaser.Display.Color.HexStringToColor(
+      (configData.colors.grade as Record<string, string>)[grade]
+    ).color;
+
+    g.clear();
+    g.fillStyle(Phaser.Display.Color.HexStringToColor(configData.colors.ui.background).color, 0.5);
+    g.fillRoundedRect(x + 1, y + 1, this.cellSize - 2, this.cellSize - 2, 4);
+    g.lineStyle(2, gradeColor, 0.5);
+    g.strokeRoundedRect(x + 1, y + 1, this.cellSize - 2, this.cellSize - 2, 4);
+  }
+
+  public resetCellHighlight(col: number, row: number): void {
+    const g = this.cellGraphics[row]?.[col];
+    if (!g) return;
+    const cell = this.cells[row][col];
+    if (cell.blocked) return;
+
+    const x = this.gridOffsetX + col * this.cellSize;
+    const y = this.gridOffsetY + row * this.cellSize;
+
+    g.clear();
+    g.fillStyle(Phaser.Display.Color.HexStringToColor(configData.colors.ui.background).color, 0.4);
+    g.fillRoundedRect(x + 1, y + 1, this.cellSize - 2, this.cellSize - 2, 4);
+    g.lineStyle(1, 0xfafafa, 0.08);
+    g.strokeRoundedRect(x + 1, y + 1, this.cellSize - 2, this.cellSize - 2, 4);
+  }
+
+  public resetAllHighlights(): void {
+    for (let row = 0; row < this.rows; row++) {
+      for (let col = 0; col < this.cols; col++) {
+        const cell = this.cells[row][col];
+        if (cell.blocked) continue;
+        if (cell.unit) {
+          this.highlightCellUnit(col, row, cell.unit.grade);
+        } else {
+          this.resetCellHighlight(col, row);
+        }
+      }
+    }
   }
 
   public getUnits(): Unit[] {
     const units: Unit[] = [];
-    for (let r = 0; r < this.rows; r++) {
-      for (let c = 0; c < this.cols; c++) {
-        if (this.tiles[r][c].unit) units.push(this.tiles[r][c].unit!);
+    for (let row = 0; row < this.rows; row++) {
+      for (let col = 0; col < this.cols; col++) {
+        const u = this.cells[row][col].unit;
+        if (u) units.push(u);
       }
     }
     return units;
   }
 
-  public getUnitAtSlot(index: number): Unit | null {
-    const row = Math.floor(index / this.cols);
-    const col = index % this.cols;
-    if (!this.isValidTile(row, col)) return null;
-    if (this.tiles[row][col].blocked) return null;
-    return this.tiles[row][col].unit;
+  public getUnitAt(col: number, row: number): Unit | null {
+    return this.cells[row]?.[col]?.unit ?? null;
   }
 
-  public getGridHeight(): number {
-    return this.rows * this.tileSize;
+  public isFull(): boolean {
+    return this.findEmptyCell() === null;
   }
 
-  public highlightSlotDrop(index: number, type: 'empty' | 'merge' | 'invalid'): void {
-    const row = Math.floor(index / this.cols);
-    const col = index % this.cols;
-    if (!this.isValidTile(row, col)) return;
-
-    const tx = this.gridX + col * this.tileSize;
-    const ty = this.gridY + row * this.tileSize;
-    const s = this.tileSize;
-    const pad = 1;
-
-    let borderColor: number;
-    let bgAlpha: number;
-    switch (type) {
-      case 'empty': borderColor = 0x66bb6a; bgAlpha = 0.25; break;
-      case 'merge': borderColor = 0xffd54f; bgAlpha = 0.35; break;
-      default: borderColor = 0xef5350; bgAlpha = 0.2; break;
-    }
-
-    this.tileGraphics.fillStyle(borderColor, bgAlpha);
-    this.tileGraphics.fillRoundedRect(tx + pad, ty + pad, s - pad * 2, s - pad * 2, 4);
-    this.tileGraphics.lineStyle(2, borderColor, 0.8);
-    this.tileGraphics.strokeRoundedRect(tx + pad, ty + pad, s - pad * 2, s - pad * 2, 4);
-  }
-
-  public highlightSlot(_index: number, _grade: UnitGrade): void {
-    // noop
-  }
-
-  public resetSlotHighlight(_index: number): void {
-    // noop
-  }
-
-  public resetAllSlotHighlights(): void {
-    this.drawAllTiles();
-  }
-
-  public getAdjacentSlots(slotIndex: number): number[] {
-    const row = Math.floor(slotIndex / this.cols);
-    const col = slotIndex % this.cols;
-    const adjacent: number[] = [];
-
+  public getAdjacentCells(col: number, row: number): { col: number; row: number }[] {
+    const adjacent: { col: number; row: number }[] = [];
     const dirs = [[-1, 0], [1, 0], [0, -1], [0, 1]];
     for (const [dr, dc] of dirs) {
-      const nr = row + dr, nc = col + dc;
-      if (this.isValidTile(nr, nc) && !this.tiles[nr][nc].blocked) {
-        adjacent.push(nr * this.cols + nc);
+      const nr = row + dr;
+      const nc = col + dc;
+      if (nr >= 0 && nr < this.rows && nc >= 0 && nc < this.cols && !this.cells[nr][nc].blocked) {
+        adjacent.push({ col: nc, row: nr });
       }
     }
     return adjacent;
+  }
+
+  public get totalAvailable(): number {
+    return this.availableCount;
+  }
+
+  public destroy(): void {
+    this.gridContainer.destroy();
   }
 }
